@@ -8,7 +8,7 @@
 |------|------|------|
 | 01 | [项目概述与目标](./01-项目概述与目标.md) | 项目背景、目标、成功指标和风险分析 |
 | 02 | [团队现状与基础设施](./02-团队现状与基础设施.md) | 团队技术栈、工具链和基础设施现状 |
-| 03 | [技术架构设计](./03-技术架构设计.md) | **核心文档**：Framework 与业务分离、Hooks 系统、Result 模式、数据模型 |
+| 03 | [技术架构设计](./03-技术架构设计.md) | **核心文档**：全局 Result 模式、Framework 与业务分离、Hooks 系统、数据模型 |
 | 04 | [多Agent架构详解](./04-多Agent架构详解.md) | 多 Agent 协作、AgentAsTool、业务 Agent 实现 |
 | 05 | [上下文管理策略](./05-上下文管理策略.md) | Session-Message-Part 模型、上下文裁剪、Skill 加载 |
 | 06 | [工具系统设计](./06-工具系统设计.md) | Result 模式详解、Tool 实现示例、错误处理 |
@@ -39,20 +39,32 @@
 - **Business Layer** 实现具体的 SRE Agent 和工具
 - Framework 不包含任何业务逻辑
 
-### 2. Result 模式
+### 2. 全局 Result 模式
 
-所有工具调用返回 `ToolResult`，不抛异常：
+**整个系统**统一使用 Result 模式，不仅限于工具调用：
+
+| Result 类型 | 应用场景 |
+|------------|---------|
+| `AgentResult` | Agent 执行结果 |
+| `LLMResult` | LLM API 调用结果 |
+| `ToolResult` | 工具执行结果 |
+| `Result<T>` | 通用结果包装 |
 
 ```csharp
-// ✅ 正确做法
-return ToolResult.Failure(
-    "Query syntax error: missing closing parenthesis",
-    errorCode: "SYNTAX_ERROR",
-    isRetryable: true);
+// ✅ 正确做法 - Tool
+return ToolResult.Failure("Query syntax error", "SYNTAX_ERROR", isRetryable: true);
+
+// ✅ 正确做法 - LLM 调用
+return LLMResult.Failure("Rate limit exceeded", "RATE_LIMIT", isRetryable: true);
 
 // ❌ 错误做法
-throw new Exception("Query failed");
+throw new Exception("Failed");
 ```
+
+优势：
+- 错误信息不丢失，LLM 可感知并自动重试
+- `IsRetryable` 标记支持智能重试决策
+- 统一的错误代码规范（`LLM_`、`TOOL_`、`AGENT_` 前缀）
 
 ### 3. Hooks 系统
 
@@ -123,6 +135,16 @@ Session → Message → Part
 ## 关键接口速查
 
 ```csharp
+// Result 基类（全局使用）
+public abstract class ResultBase
+{
+    public bool IsSuccess { get; init; }
+    public string? ErrorCode { get; init; }
+    public string? ErrorMessage { get; init; }
+    public bool IsRetryable { get; init; }
+    public TimeSpan Duration { get; init; }
+}
+
 // Agent 接口
 public interface IAgent
 {
@@ -141,6 +163,12 @@ public interface ITool
     Task<ToolResult> ExecuteAsync(ToolExecutionContext context, CancellationToken ct);
 }
 
+// LLM 客户端接口
+public interface ILLMClient
+{
+    Task<LLMResult> CompleteAsync(IReadOnlyList<Message> messages, LLMOptions options, CancellationToken ct);
+}
+
 // 上下文管理器接口
 public interface IContextManager
 {
@@ -153,7 +181,7 @@ public interface IContextManager
 public interface IAgentHooks
 {
     Task<HookResult> OnBeforeExecuteAsync(BeforeExecuteContext context);
-    Task<HookResult> OnBeforeLLMCallAsync(BeforeLLMCallContext context);
+    Task<HookResult> OnBeforeLLMCallAsync(BeforeLLMCallContext context);  // 可修改模型
     Task<HookResult> OnBeforeToolCallAsync(BeforeToolCallContext context);
     Task<HookResult> OnIterationEndAsync(IterationEndContext context);
     // ...
