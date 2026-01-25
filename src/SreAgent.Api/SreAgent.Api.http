@@ -1,0 +1,6 @@
+@SreAgent.Api_HostAddress = http://localhost:5099
+
+GET {{SreAgent.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
