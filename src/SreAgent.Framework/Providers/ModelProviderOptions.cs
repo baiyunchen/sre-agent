@@ -2,7 +2,7 @@ namespace SreAgent.Framework.Providers;
 
 /// <summary>
 /// Model Provider 配置选项
-/// 包含 API 连接信息和各能力级别对应的模型映射
+/// 包含 API 连接信息、各能力级别对应的模型映射和定价信息
 /// </summary>
 public class ModelProviderOptions
 {
@@ -23,6 +23,12 @@ public class ModelProviderOptions
     /// Key: ModelCapability, Value: 模型名称
     /// </summary>
     public required Dictionary<ModelCapability, string> Models { get; init; }
+    
+    /// <summary>
+    /// 各模型的定价信息
+    /// Key: 模型名称, Value: 定价信息
+    /// </summary>
+    public Dictionary<string, ModelPricing> Pricing { get; init; } = new();
     
     /// <summary>获取指定能力级别对应的模型</summary>
     public string GetModel(ModelCapability capability)
@@ -45,6 +51,47 @@ public class ModelProviderOptions
         
         throw new InvalidOperationException(
             $"No model configured for capability '{capability}' in provider '{Name}'.");
+    }
+    
+    /// <summary>获取指定模型的定价信息</summary>
+    public ModelPricing? GetPricing(string modelName)
+    {
+        return Pricing.TryGetValue(modelName, out var pricing) ? pricing : null;
+    }
+    
+    /// <summary>获取指定能力级别对应模型的定价信息</summary>
+    public ModelPricing? GetPricing(ModelCapability capability)
+    {
+        var modelName = GetModel(capability);
+        return GetPricing(modelName);
+    }
+    
+    /// <summary>计算成本</summary>
+    public CostSummary? CalculateCost(string modelName, TokenUsageDetail usage)
+    {
+        var pricing = GetPricing(modelName);
+        if (pricing == null) return null;
+        
+        var inputCost = usage.NonCachedInputTokens * pricing.InputPricePerMillion / 1_000_000m;
+        var outputCost = usage.OutputTokens * pricing.OutputPricePerMillion / 1_000_000m;
+        
+        var cachedCost = pricing.CachedInputPricePerMillion.HasValue
+            ? usage.CachedInputTokens * pricing.CachedInputPricePerMillion.Value / 1_000_000m
+            : 0m;
+        
+        // 计算缓存节省的成本
+        var cacheSavings = pricing.CachedInputPricePerMillion.HasValue
+            ? usage.CachedInputTokens * (pricing.InputPricePerMillion - pricing.CachedInputPricePerMillion.Value) / 1_000_000m
+            : 0m;
+        
+        return new CostSummary
+        {
+            ModelName = modelName,
+            Usage = usage,
+            InputCost = inputCost + cachedCost,
+            OutputCost = outputCost,
+            CacheSavings = cacheSavings
+        };
     }
     
     /// <summary>获取有效的 API Key</summary>

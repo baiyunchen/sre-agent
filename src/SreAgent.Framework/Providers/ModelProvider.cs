@@ -17,6 +17,9 @@ public class ModelProvider
     /// <summary>当前 Provider 名称</summary>
     public string Name => _options.Name;
     
+    /// <summary>Provider 配置</summary>
+    public ModelProviderOptions Options => _options;
+    
     /// <summary>
     /// 创建 ModelProvider 实例
     /// </summary>
@@ -50,6 +53,34 @@ public class ModelProvider
     /// 获取指定能力级别对应的模型名称
     /// </summary>
     public string GetModelName(ModelCapability capability) => _options.GetModel(capability);
+    
+    /// <summary>
+    /// 获取指定能力级别对应模型的定价信息
+    /// </summary>
+    public ModelPricing? GetPricing(ModelCapability capability) => _options.GetPricing(capability);
+    
+    /// <summary>
+    /// 计算成本
+    /// </summary>
+    /// <param name="capability">模型能力级别</param>
+    /// <param name="usage">Token 使用详情</param>
+    /// <returns>成本统计结果</returns>
+    public CostSummary? CalculateCost(ModelCapability capability, TokenUsageDetail usage)
+    {
+        var modelName = GetModelName(capability);
+        return _options.CalculateCost(modelName, usage);
+    }
+    
+    /// <summary>
+    /// 计算成本
+    /// </summary>
+    /// <param name="modelName">模型名称</param>
+    /// <param name="usage">Token 使用详情</param>
+    /// <returns>成本统计结果</returns>
+    public CostSummary? CalculateCost(string modelName, TokenUsageDetail usage)
+    {
+        return _options.CalculateCost(modelName, usage);
+    }
     
     private IChatClient CreateChatClient(ModelCapability capability)
     {
