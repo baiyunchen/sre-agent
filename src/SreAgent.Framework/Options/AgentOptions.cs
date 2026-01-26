@@ -1,4 +1,5 @@
 using SreAgent.Framework.Abstractions;
+using SreAgent.Framework.Providers;
 
 namespace SreAgent.Framework.Options;
 
@@ -7,8 +8,11 @@ namespace SreAgent.Framework.Options;
 /// </summary>
 public class AgentOptions
 {
-    /// <summary>使用的模型标识</summary>
-    public string Model { get; set; } = "gpt-4";
+    /// <summary>
+    /// 模型能力级别
+    /// Agent 只需指定需要的能力级别，具体模型由 Provider 决定
+    /// </summary>
+    public ModelCapability ModelCapability { get; set; } = ModelCapability.Medium;
     
     /// <summary>System Prompt</summary>
     public string? SystemPrompt { get; set; }

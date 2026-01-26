@@ -4,6 +4,7 @@ using Microsoft.Extensions.AI;
 using SreAgent.Framework.Abstractions;
 using SreAgent.Framework.Contexts;
 using SreAgent.Framework.Options;
+using SreAgent.Framework.Providers;
 using SreAgent.Framework.Results;
 
 namespace SreAgent.Framework.Agents;
@@ -14,24 +15,32 @@ namespace SreAgent.Framework.Agents;
 /// </summary>
 public class ToolLoopAgent : IAgent
 {
-    private readonly IChatClient _chatClient;
+    private readonly ModelProvider _modelProvider;
     private readonly AgentOptions _options;
     
     public string Id { get; }
     public string Name { get; }
     public string Description { get; }
     
+    /// <summary>
+    /// 创建 ToolLoopAgent
+    /// </summary>
+    /// <param name="id">Agent 唯一标识</param>
+    /// <param name="name">Agent 名称</param>
+    /// <param name="description">Agent 描述</param>
+    /// <param name="modelProvider">Model Provider（全局共享）</param>
+    /// <param name="options">Agent 配置选项</param>
     public ToolLoopAgent(
         string id,
         string name,
         string description,
-        IChatClient chatClient,
+        ModelProvider modelProvider,
         AgentOptions? options = null)
     {
         Id = id;
         Name = name;
         Description = description;
-        _chatClient = chatClient;
+        _modelProvider = modelProvider;
         _options = options ?? new AgentOptions();
     }
     
@@ -41,6 +50,9 @@ public class ToolLoopAgent : IAgent
     {
         var messages = new List<ChatMessage>();
         var totalTokenUsage = new TokenUsage();
+        
+        // 根据配置的能力级别获取对应的 ChatClient
+        var chatClient = _modelProvider.GetChatClient(_options.ModelCapability);
         
         try
         {
@@ -53,7 +65,7 @@ public class ToolLoopAgent : IAgent
                 cancellationToken.ThrowIfCancellationRequested();
                 
                 // 调用 LLM
-                var (response, tokenUsage) = await CallLlmAsync(messages, cancellationToken);
+                var (response, tokenUsage) = await CallLlmAsync(chatClient, messages, cancellationToken);
                 totalTokenUsage += tokenUsage;
                 
                 // 添加 Assistant 响应到消息历史
@@ -136,6 +148,7 @@ public class ToolLoopAgent : IAgent
     }
     
     private async Task<(ChatMessage Response, TokenUsage TokenUsage)> CallLlmAsync(
+        IChatClient chatClient,
         List<ChatMessage> messages,
         CancellationToken cancellationToken)
     {
@@ -146,7 +159,7 @@ public class ToolLoopAgent : IAgent
             Tools = _options.Tools.Select(ConvertToAITool).ToList()
         };
         
-        var response = await _chatClient.GetResponseAsync(messages, chatOptions, cancellationToken);
+        var response = await chatClient.GetResponseAsync(messages, chatOptions, cancellationToken);
         
         var tokenUsage = new TokenUsage(
             (int)(response.Usage?.InputTokenCount ?? 0),
