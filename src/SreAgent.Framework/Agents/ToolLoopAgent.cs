@@ -482,22 +482,19 @@ public class ToolLoopAgent : IAgent
     
     /// <summary>
     /// 将 ITool 转换为 AITool
+    /// 使用自定义的 ToolAIFunction 适配器，确保正确的参数 Schema 传递给 LLM
     /// </summary>
     private AITool CreateAiToolFromTool(ITool tool)
     {
         var detail = tool.GetDetail();
         
         // 打印工具定义，方便调试
-        _logger.LogInformation(
+        _logger.LogDebug(
             "[CreateAiTool] Name={Name}, ParameterSchema={Schema}",
             detail.Name, detail.ParameterSchema);
         
-        // 使用 AIFunctionFactory.Create 创建 AIFunction
-        // 传入一个占位委托，实际执行在 ExecuteToolCallsAsync 中处理
-        return AIFunctionFactory.Create(
-            (JsonElement _) => "placeholder",
-            tool.Name,
-            tool.Description);
+        // 使用 ToolAIFunction 适配器，它会正确传递我们自定义的参数 Schema
+        return tool.ToAITool();
     }
     
     private async Task<List<(string CallId, string ToolName, ToolResult Result)>> ExecuteToolCallsAsync(
