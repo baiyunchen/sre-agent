@@ -1,0 +1,104 @@
+Use this tool to create and manage a structured task list for your current analysis session. This helps you track progress, organize complex tasks, and demonstrate thoroughness to the user.
+It also helps the user understand the progress of the task and overall progress of their requests.
+
+## When to Use This Tool
+Use this tool proactively in these scenarios:
+
+1. Complex multistep tasks - When a task requires 3 or more distinct steps or actions
+2. Non-trivial and complex tasks - Tasks that require careful planning or multiple operations
+3. User explicitly requests todo list - When the user directly asks you to use the todo list
+4. User provides multiple tasks - When users provide a list of things to be done (numbered or comma-separated)
+5. After receiving new instructions - Immediately capture user requirements as todos. Feel free to edit the todo list based on new information.
+6. After completing a task - Mark it complete and add any new follow-up tasks
+7. When you start working on a new task, mark the todo as in_progress. Ideally you should only have one todo as in_progress at a time. Complete existing tasks before starting new ones.
+
+## When NOT to Use This Tool
+
+Skip using this tool when:
+1. There is only a single, straightforward task
+2. The task is trivial and tracking it provides no organizational benefit
+3. The task can be completed in less than 3 trivial steps
+4. The task is purely conversational or informational
+
+NOTE that you should not use this tool if there is only one trivial task to do. In this case you are better off just doing the task directly.
+
+## Examples of When to Use the Todo List
+
+<example>
+User: I need you to analyze the database connection issues. Check the connection pool, query performance, and replication status.
+Assistant: I'll help analyze the database connection issues. Let me create a todo list to track this investigation.
+*Creates todo list with the following items:*
+1. Check database connection pool status and configuration
+2. Analyze query performance metrics and slow queries
+3. Verify replication status and lag
+4. Summarize findings and provide recommendations
+*Begins working on the first task*
+
+<reasoning>
+The assistant used the todo list because:
+1. Analyzing database issues is a multi-step investigation requiring multiple checks
+2. The user explicitly mentioned three areas to investigate
+3. The todo list helps methodically track the analysis progress
+</reasoning>
+</example>
+
+<example>
+User: Help me investigate the high CPU usage on the production servers
+Assistant: Let me first gather information about the current system state.
+*Uses monitoring tools to collect CPU metrics*
+Assistant: I've identified several processes contributing to high CPU usage. Let me create a todo list to track the investigation.
+*Creates todo list with specific items for each process and area to investigate*
+
+<reasoning>
+The assistant used the todo list because:
+1. First, the assistant gathered data to understand the scope of the issue
+2. Upon identifying multiple contributing factors, it determined this was a complex investigation
+3. The todo list helps ensure every potential cause is tracked and investigated systematically
+</reasoning>
+</example>
+
+## Examples of When NOT to Use the Todo List
+
+<example>
+User: What is the current CPU usage?
+Assistant: Let me check the current CPU usage for you.
+*Executes monitoring command*
+The current CPU usage is 45% across all cores.
+
+<reasoning>
+The assistant did not use the todo list because this is a single, trivial task that can be completed in one step. There's no need to track multiple tasks or steps for such a straightforward request.
+</reasoning>
+</example>
+
+<example>
+User: Restart the nginx service
+Assistant: I'll restart the nginx service for you.
+*Executes: systemctl restart nginx*
+The nginx service has been restarted successfully.
+
+<reasoning>
+The assistant did not use the todo list because this is a single command execution with immediate results. There are no multiple steps to track or organize.
+</reasoning>
+</example>
+
+## Task States and Management
+
+1. **Task States**: Use these states to track progress:
+   - pending: Task not yet started
+   - in_progress: Currently working on (limit to ONE task at a time)
+   - completed: Task finished successfully
+   - cancelled: Task no longer needed
+
+2. **Task Management**:
+   - Update task status in real-time as you work
+   - Mark tasks complete IMMEDIATELY after finishing (don't batch completions)
+   - Only have ONE task in_progress at any time
+   - Complete current tasks before starting new ones
+   - Cancel tasks that become irrelevant
+
+3. **Task Breakdown**:
+   - Create specific, actionable items
+   - Break complex tasks into smaller, manageable steps
+   - Use clear, descriptive task names
+
+When in doubt, use this tool. Being proactive with task management demonstrates attentiveness and ensures you complete all requirements successfully.

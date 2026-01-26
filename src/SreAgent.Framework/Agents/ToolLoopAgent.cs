@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using SreAgent.Framework.Abstractions;
 using SreAgent.Framework.Contexts;
 using SreAgent.Framework.Options;
@@ -17,6 +19,7 @@ public class ToolLoopAgent : IAgent
 {
     private readonly ModelProvider _modelProvider;
     private readonly AgentOptions _options;
+    private readonly ILogger<ToolLoopAgent> _logger;
     
     public string Id { get; }
     public string Name { get; }
@@ -30,43 +33,73 @@ public class ToolLoopAgent : IAgent
     /// <param name="description">Agent 描述</param>
     /// <param name="modelProvider">Model Provider（全局共享）</param>
     /// <param name="options">Agent 配置选项</param>
+    /// <param name="logger">日志记录器（可选）</param>
     public ToolLoopAgent(
         string id,
         string name,
         string description,
         ModelProvider modelProvider,
-        AgentOptions? options = null)
+        AgentOptions? options = null,
+        ILogger<ToolLoopAgent>? logger = null)
     {
         Id = id;
         Name = name;
         Description = description;
         _modelProvider = modelProvider;
         _options = options ?? new AgentOptions();
+        _logger = logger ?? NullLogger<ToolLoopAgent>.Instance;
     }
     
     public async Task<AgentResult> ExecuteAsync(
         AgentExecutionContext context,
         CancellationToken cancellationToken = default)
     {
+        var executionId = Guid.NewGuid().ToString("N")[..8];
+        var sw = Stopwatch.StartNew();
+        
+        _logger.LogInformation(
+            "[{ExecutionId}] Agent '{AgentName}' ({AgentId}) 开始执行，SessionId: {SessionId}，输入长度: {InputLength}",
+            executionId, Name, Id, context.SessionId, context.Input?.Length ?? 0);
+        
         var messages = new List<ChatMessage>();
         var totalTokenUsage = new TokenUsage();
         
         // 根据配置的能力级别获取对应的 ChatClient
         var chatClient = _modelProvider.GetChatClient(_options.ModelCapability);
         
+        _logger.LogDebug(
+            "[{ExecutionId}] 使用模型能力级别: {ModelCapability}，最大迭代次数: {MaxIterations}，工具数量: {ToolCount}",
+            executionId, _options.ModelCapability, _options.MaxIterations, _options.Tools.Count);
+        
         try
         {
             // 初始化消息
             InitializeMessages(messages, context);
+            _logger.LogDebug("[{ExecutionId}] 消息初始化完成，初始消息数: {MessageCount}", executionId, messages.Count);
             
             // 主循环
             for (var iteration = 0; iteration < _options.MaxIterations; iteration++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 
+                _logger.LogInformation(
+                    "[{ExecutionId}] 开始第 {Iteration}/{MaxIterations} 次迭代，当前消息数: {MessageCount}，累计 Token: 输入={PromptTokens}, 输出={CompletionTokens}",
+                    executionId, iteration + 1, _options.MaxIterations, messages.Count, 
+                    totalTokenUsage.PromptTokens, totalTokenUsage.CompletionTokens);
+                
                 // 调用 LLM
+                _logger.LogDebug(
+                    "[{ExecutionId}] 准备调用 LLM，消息数: {MessageCount}，工具数: {ToolCount}",
+                    executionId, messages.Count, _options.Tools.Count);
+                
+                var llmSw = Stopwatch.StartNew();
                 var (response, tokenUsage) = await CallLlmAsync(chatClient, messages, cancellationToken);
+                llmSw.Stop();
                 totalTokenUsage += tokenUsage;
+                
+                _logger.LogDebug(
+                    "[{ExecutionId}] LLM 调用完成，耗时: {ElapsedMs}ms，本次 Token: 输入={PromptTokens}, 输出={CompletionTokens}",
+                    executionId, llmSw.ElapsedMilliseconds, tokenUsage.PromptTokens, tokenUsage.CompletionTokens);
                 
                 // 添加 Assistant 响应到消息历史
                 messages.Add(response);
@@ -76,12 +109,40 @@ public class ToolLoopAgent : IAgent
                 
                 if (toolCalls.Count > 0)
                 {
+                    var toolNames = string.Join(", ", toolCalls.Select(tc => tc.Name));
+                    _logger.LogInformation(
+                        "[{ExecutionId}] 迭代 {Iteration}: 检测到 {ToolCallCount} 个工具调用: [{ToolNames}]",
+                        executionId, iteration + 1, toolCalls.Count, toolNames);
+                    
                     // 执行工具调用
+                    var toolSw = Stopwatch.StartNew();
                     var toolResults = await ExecuteToolCallsAsync(
                         context.SessionId,
                         toolCalls,
                         context.Variables,
                         cancellationToken);
+                    toolSw.Stop();
+                    
+                    // 记录每个工具的执行结果
+                    foreach (var (callId, toolName, result) in toolResults)
+                    {
+                        if (result.IsSuccess)
+                        {
+                            _logger.LogDebug(
+                                "[{ExecutionId}] 工具 '{ToolName}' 执行成功，耗时: {Duration}ms，结果长度: {ResultLength}",
+                                executionId, toolName, result.Duration.TotalMilliseconds, result.Content?.Length ?? 0);
+                        }
+                        else
+                        {
+                            _logger.LogWarning(
+                                "[{ExecutionId}] 工具 '{ToolName}' 执行失败，错误码: {ErrorCode}，错误信息: {ErrorMessage}",
+                                executionId, toolName, result.ErrorCode, result.Content);
+                        }
+                    }
+                    
+                    _logger.LogDebug(
+                        "[{ExecutionId}] 所有工具执行完成，总耗时: {ElapsedMs}ms",
+                        executionId, toolSw.ElapsedMilliseconds);
                     
                     // 添加工具结果消息
                     var toolResultMessage = CreateToolResultMessage(toolResults);
@@ -97,16 +158,32 @@ public class ToolLoopAgent : IAgent
                     
                     if (!string.IsNullOrEmpty(textContent))
                     {
+                        sw.Stop();
+                        _logger.LogInformation(
+                            "[{ExecutionId}] Agent '{AgentName}' 执行成功完成，迭代次数: {Iterations}，总耗时: {ElapsedMs}ms，累计 Token: 输入={PromptTokens}, 输出={CompletionTokens}，响应长度: {ResponseLength}",
+                            executionId, Name, iteration + 1, sw.ElapsedMilliseconds,
+                            totalTokenUsage.PromptTokens, totalTokenUsage.CompletionTokens, textContent.Length);
+                        
                         return AgentResult.Success(
                             textContent,
                             messages,
                             totalTokenUsage,
                             iteration + 1);
                     }
+                    
+                    _logger.LogDebug(
+                        "[{ExecutionId}] 迭代 {Iteration}: 无工具调用且无文本内容，继续下一次迭代",
+                        executionId, iteration + 1);
                 }
             }
             
             // 达到最大迭代次数
+            sw.Stop();
+            _logger.LogWarning(
+                "[{ExecutionId}] Agent '{AgentName}' 达到最大迭代次数 {MaxIterations}，总耗时: {ElapsedMs}ms，累计 Token: 输入={PromptTokens}, 输出={CompletionTokens}",
+                executionId, Name, _options.MaxIterations, sw.ElapsedMilliseconds,
+                totalTokenUsage.PromptTokens, totalTokenUsage.CompletionTokens);
+            
             return AgentResult.Failure(
                 new AgentError("MAX_ITERATIONS", "Reached maximum iterations without completion"),
                 messages,
@@ -114,6 +191,11 @@ public class ToolLoopAgent : IAgent
         }
         catch (OperationCanceledException)
         {
+            sw.Stop();
+            _logger.LogWarning(
+                "[{ExecutionId}] Agent '{AgentName}' 执行被取消，总耗时: {ElapsedMs}ms",
+                executionId, Name, sw.ElapsedMilliseconds);
+            
             return AgentResult.Failure(
                 new AgentError("CANCELLED", "Operation was cancelled"),
                 messages,
@@ -122,6 +204,11 @@ public class ToolLoopAgent : IAgent
         }
         catch (Exception ex)
         {
+            sw.Stop();
+            _logger.LogError(ex,
+                "[{ExecutionId}] Agent '{AgentName}' 执行异常，总耗时: {ElapsedMs}ms，异常类型: {ExceptionType}，异常信息: {ExceptionMessage}",
+                executionId, Name, sw.ElapsedMilliseconds, ex.GetType().Name, ex.Message);
+            
             return AgentResult.Failure(
                 new AgentError("EXCEPTION", ex.Message, ex),
                 messages,
@@ -156,7 +243,7 @@ public class ToolLoopAgent : IAgent
         {
             Temperature = (float)_options.Temperature,
             MaxOutputTokens = _options.MaxTokens,
-            Tools = _options.Tools.Select(ConvertToAITool).ToList()
+            Tools = _options.Tools.Select(CreateAiToolFromTool).ToList()
         };
         
         var response = await chatClient.GetResponseAsync(messages, chatOptions, cancellationToken);
@@ -172,19 +259,15 @@ public class ToolLoopAgent : IAgent
         return (lastMessage, tokenUsage);
     }
     
-    private static AITool ConvertToAITool(ITool tool)
+    /// <summary>
+    /// 将 ITool 转换为 AITool
+    /// </summary>
+    private static AITool CreateAiToolFromTool(ITool tool)
     {
+        // 使用 AIFunctionFactory.Create 创建 AIFunction
+        // 传入一个占位委托，实际执行在 ExecuteToolCallsAsync 中处理
         return AIFunctionFactory.Create(
-            async (JsonElement parameters, CancellationToken ct) =>
-            {
-                var context = new ToolExecutionContext
-                {
-                    Parameters = parameters,
-                    RawArguments = parameters.GetRawText()
-                };
-                var result = await tool.ExecuteAsync(context, ct);
-                return result.Content;
-            },
+            (JsonElement _) => "placeholder",
             tool.Name,
             tool.Description);
     }
@@ -206,13 +289,13 @@ public class ToolLoopAgent : IAgent
             {
                 // 工具不存在，返回错误结果
                 result = ToolResult.Failure(
-                    $"Tool '{toolCall.Name}' not found. Available tools: {string.Join(", ", _options.Tools.Select(t => t.Name))}",
+                    $"工具 '{toolCall.Name}' 不存在。可用的工具: {string.Join(", ", _options.Tools.Select(t => t.Name))}",
                     "TOOL_NOT_FOUND");
             }
             else
             {
                 // 执行工具
-                var sw = Stopwatch.StartNew();
+                var toolSw = Stopwatch.StartNew();
                 try
                 {
                     var parameters = toolCall.Arguments is not null
@@ -236,8 +319,8 @@ public class ToolLoopAgent : IAgent
                     // 即使工具抛异常，也转为 Result 返回给 LLM
                     result = ToolResult.FromException(ex);
                 }
-                sw.Stop();
-                result = result with { Duration = sw.Elapsed };
+                toolSw.Stop();
+                result = result with { Duration = toolSw.Elapsed };
             }
             
             results.Add((toolCall.CallId ?? Guid.NewGuid().ToString(), toolCall.Name, result));

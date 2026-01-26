@@ -1,6 +1,52 @@
-@SreAgent.Api_HostAddress = http://localhost:5099
+@HostAddress = http://localhost:5000
 
-GET {{SreAgent.Api_HostAddress}}/weatherforecast/
+### 健康检查
+GET {{HostAddress}}/health
 Accept: application/json
+
+###
+
+### 分析故障告警 - 示例1: 服务不可用
+POST {{HostAddress}}/api/sre/analyze
+Content-Type: application/json
+
+{
+  "title": "订单服务 5xx 错误率飙升",
+  "severity": "P1",
+  "alertTime": "2026-01-26T10:30:00Z",
+  "affectedService": "order-service",
+  "description": "订单服务在过去5分钟内 5xx 错误率从 0.1% 飙升至 15%，影响用户下单。Grafana 监控显示 CPU 使用率正常，但内存使用率达到 85%。",
+  "additionalInfo": "最近一次部署: 2小时前，版本 v2.3.1。同时观察到数据库连接池告警。"
+}
+
+###
+
+### 分析故障告警 - 示例2: 性能下降
+POST {{HostAddress}}/api/sre/analyze
+Content-Type: application/json
+
+{
+  "title": "API 响应延迟增加",
+  "severity": "P2",
+  "alertTime": "2026-01-26T14:15:00Z",
+  "affectedService": "api-gateway",
+  "description": "API Gateway P99 延迟从 200ms 增加到 2000ms，影响所有下游服务。",
+  "additionalInfo": "流量正常，无明显峰值。Redis 集群状态正常。"
+}
+
+###
+
+### 分析故障告警 - 示例3: 数据库问题
+POST {{HostAddress}}/api/sre/analyze
+Content-Type: application/json
+
+{
+  "title": "MySQL 主从同步延迟",
+  "severity": "P2",
+  "alertTime": "2026-01-26T09:00:00Z",
+  "affectedService": "mysql-cluster",
+  "description": "MySQL 主从同步延迟达到 300 秒，读库数据严重滞后。从库 Seconds_Behind_Master 持续增长。",
+  "additionalInfo": "主库写入 QPS 正常，从库 IO 线程和 SQL 线程均为 Yes 状态。"
+}
 
 ###

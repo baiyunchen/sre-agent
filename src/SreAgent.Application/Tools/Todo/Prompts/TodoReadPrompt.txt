@@ -1,0 +1,10 @@
+Use this tool to read your current todo list for the session.
+
+This tool returns all todo items with their current status, priority, and content.
+Use this to review your progress and determine what tasks remain to be completed.
+
+The returned todo list includes:
+- id: Unique identifier for each todo item
+- content: Brief description of the task
+- status: Current status (pending, in_progress, completed, cancelled)
+- priority: Priority level (high, medium, low)

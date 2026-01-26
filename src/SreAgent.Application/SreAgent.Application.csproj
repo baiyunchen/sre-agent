@@ -6,4 +6,12 @@
         <Nullable>enable</Nullable>
     </PropertyGroup>
 
+    <ItemGroup>
+      <ProjectReference Include="..\SreAgent.Framework\SreAgent.Framework.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <EmbeddedResource Include="Tools\Todo\Prompts\*.txt" />
+    </ItemGroup>
+
 </Project>

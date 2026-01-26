@@ -89,7 +89,9 @@ public class ModelProvider
         
         var options = new OpenAIClientOptions
         {
-            Endpoint = new Uri(_options.BaseUrl)
+            Endpoint = new Uri(_options.BaseUrl),
+            // 设置网络超时，避免请求无限等待
+            NetworkTimeout = TimeSpan.FromMinutes(3)
         };
         
         var credential = new ApiKeyCredential(apiKey);
