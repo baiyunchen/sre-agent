@@ -1,4 +1,5 @@
 using SreAgent.Framework.Abstractions;
+using SreAgent.Framework.Contexts;
 using SreAgent.Framework.Providers;
 
 namespace SreAgent.Framework.Options;
@@ -31,4 +32,13 @@ public class AgentOptions
     
     /// <summary>可用的工具列表</summary>
     public IReadOnlyList<ITool> Tools { get; set; } = [];
+    
+    /// <summary>
+    /// 上下文剪枝器
+    /// 如果不指定，使用 RemoveOldestContextTrimmer 作为默认实现
+    /// </summary>
+    public IContextTrimmer? ContextTrimmer { get; set; }
+    
+    /// <summary>剪枝后的目标 Token 比例（相对于模型限制）</summary>
+    public double TrimTargetRatio { get; set; } = 0.8;
 }

@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using SreAgent.Framework.Abstractions;
 using SreAgent.Framework.Contexts;
+using SreAgent.Framework.Contexts.Trimmers;
 using SreAgent.Framework.Options;
 using SreAgent.Framework.Providers;
 using SreAgent.Framework.Results;
@@ -20,6 +21,7 @@ public class ToolLoopAgent : IAgent
     private readonly ModelProvider _modelProvider;
     private readonly AgentOptions _options;
     private readonly ILogger<ToolLoopAgent> _logger;
+    private readonly IContextTrimmer _contextTrimmer;
     
     public string Id { get; }
     public string Name { get; }
@@ -48,6 +50,9 @@ public class ToolLoopAgent : IAgent
         _modelProvider = modelProvider;
         _options = options ?? new AgentOptions();
         _logger = logger ?? NullLogger<ToolLoopAgent>.Instance;
+        
+        // 使用传入的剪枝器，或创建默认的 RemoveOldestContextTrimmer
+        _contextTrimmer = _options.ContextTrimmer ?? new RemoveOldestContextTrimmer();
     }
     
     public async Task<AgentResult> ExecuteAsync(
@@ -64,17 +69,24 @@ public class ToolLoopAgent : IAgent
         var messages = new List<ChatMessage>();
         var totalTokenUsage = new TokenUsage();
         
+        // 创建上下文管理器
+        var tokenEstimator = new SimpleTokenEstimator();
+        var contextManager = new DefaultContextManager(tokenEstimator);
+        
         // 根据配置的能力级别获取对应的 ChatClient
         var chatClient = _modelProvider.GetChatClient(_options.ModelCapability);
         
+        // 获取模型 Token 限制
+        var tokenLimits = _modelProvider.Options.GetTokenLimits(_options.ModelCapability);
+        
         _logger.LogDebug(
-            "[{ExecutionId}] 使用模型能力级别: {ModelCapability}，最大迭代次数: {MaxIterations}，工具数量: {ToolCount}",
-            executionId, _options.ModelCapability, _options.MaxIterations, _options.Tools.Count);
+            "[{ExecutionId}] 使用模型能力级别: {ModelCapability}，最大迭代次数: {MaxIterations}，工具数量: {ToolCount}，有效输入 Token 限制: {EffectiveInputTokens}",
+            executionId, _options.ModelCapability, _options.MaxIterations, _options.Tools.Count, tokenLimits.EffectiveInputTokens);
         
         try
         {
             // 初始化消息
-            InitializeMessages(messages, context);
+            InitializeMessages(messages, contextManager, context);
             _logger.LogDebug("[{ExecutionId}] 消息初始化完成，初始消息数: {MessageCount}", executionId, messages.Count);
             
             // 主循环
@@ -83,9 +95,41 @@ public class ToolLoopAgent : IAgent
                 cancellationToken.ThrowIfCancellationRequested();
                 
                 _logger.LogInformation(
-                    "[{ExecutionId}] 开始第 {Iteration}/{MaxIterations} 次迭代，当前消息数: {MessageCount}，累计 Token: 输入={PromptTokens}, 输出={CompletionTokens}",
+                    "[{ExecutionId}] 开始第 {Iteration}/{MaxIterations} 次迭代，当前消息数: {MessageCount}，估算 Token: {EstimatedTokens}，累计 Token: 输入={PromptTokens}, 输出={CompletionTokens}",
                     executionId, iteration + 1, _options.MaxIterations, messages.Count, 
+                    contextManager.EstimatedTokenCount,
                     totalTokenUsage.PromptTokens, totalTokenUsage.CompletionTokens);
+                
+                // Token 检查和剪枝
+                var effectiveLimit = tokenLimits.EffectiveInputTokens;
+                var toolDefinitionTokens = EstimateToolDefinitionTokens(tokenEstimator);
+                var currentTokens = contextManager.EstimatedTokenCount + toolDefinitionTokens;
+                
+                if (currentTokens > effectiveLimit)
+                {
+                    _logger.LogInformation(
+                        "[{ExecutionId}] Token 超限，当前: {Current}，限制: {Limit}，触发 {Trimmer} 剪枝",
+                        executionId, currentTokens, effectiveLimit, _contextTrimmer.Name);
+                    
+                    var targetTokens = (int)(effectiveLimit * _options.TrimTargetRatio) - toolDefinitionTokens;
+                    var trimResult = _contextTrimmer.Trim(contextManager, targetTokens);
+                    
+                    if (trimResult.IsSuccess)
+                    {
+                        _logger.LogInformation(
+                            "[{ExecutionId}] 剪枝完成，Token: {Before} -> {After}，移除消息: {Removed}",
+                            executionId, trimResult.TokensBefore, trimResult.TokensAfter, trimResult.MessagesRemoved);
+                        
+                        // 重建 ChatMessage 列表
+                        messages = RebuildChatMessages(contextManager);
+                    }
+                    else
+                    {
+                        _logger.LogWarning(
+                            "[{ExecutionId}] 剪枝失败: {Error}",
+                            executionId, trimResult.ErrorMessage);
+                    }
+                }
                 
                 // 调用 LLM
                 _logger.LogDebug(
@@ -103,6 +147,7 @@ public class ToolLoopAgent : IAgent
                 
                 // 添加 Assistant 响应到消息历史
                 messages.Add(response);
+                AddAssistantMessageToContext(contextManager, response);
                 
                 // 检查是否有工具调用
                 var toolCalls = response.Contents.OfType<FunctionCallContent>().ToList();
@@ -124,13 +169,13 @@ public class ToolLoopAgent : IAgent
                     toolSw.Stop();
                     
                     // 记录每个工具的执行结果
-                    foreach (var (callId, toolName, result) in toolResults)
+                    foreach (var (_, toolName, result) in toolResults)
                     {
                         if (result.IsSuccess)
                         {
                             _logger.LogDebug(
                                 "[{ExecutionId}] 工具 '{ToolName}' 执行成功，耗时: {Duration}ms，结果长度: {ResultLength}",
-                                executionId, toolName, result.Duration.TotalMilliseconds, result.Content?.Length ?? 0);
+                                executionId, toolName, result.Duration.TotalMilliseconds, result.Content.Length);
                         }
                         else
                         {
@@ -147,6 +192,7 @@ public class ToolLoopAgent : IAgent
                     // 添加工具结果消息
                     var toolResultMessage = CreateToolResultMessage(toolResults);
                     messages.Add(toolResultMessage);
+                    AddToolResultsToContext(contextManager, toolResults);
                 }
                 else
                 {
@@ -216,22 +262,163 @@ public class ToolLoopAgent : IAgent
         }
     }
     
-    private void InitializeMessages(List<ChatMessage> messages, AgentExecutionContext context)
+    private void InitializeMessages(List<ChatMessage> messages, IContextManager contextManager, AgentExecutionContext context)
     {
         // 添加 System Prompt
         if (!string.IsNullOrEmpty(_options.SystemPrompt))
         {
             messages.Add(new ChatMessage(ChatRole.System, _options.SystemPrompt));
+            contextManager.SetSystemMessage(_options.SystemPrompt);
         }
         
         // 添加初始历史消息
         if (context.InitialMessages is { Count: > 0 })
         {
             messages.AddRange(context.InitialMessages);
+            // 将初始消息添加到上下文管理器
+            foreach (var msg in context.InitialMessages)
+            {
+                contextManager.AddMessage(ConvertToMessage(msg));
+            }
         }
         
         // 添加用户输入
         messages.Add(new ChatMessage(ChatRole.User, context.Input));
+        contextManager.AddMessage(new Message
+        {
+            Role = MessageRole.User,
+            Parts = [new TextPart { Text = context.Input }]
+        });
+    }
+    
+    private static Message ConvertToMessage(ChatMessage chatMessage)
+    {
+        var role = chatMessage.Role.Value switch
+        {
+            "system" => MessageRole.System,
+            "user" => MessageRole.User,
+            "assistant" => MessageRole.Assistant,
+            "tool" => MessageRole.Tool,
+            _ => MessageRole.User
+        };
+        
+        var parts = new List<MessagePart>();
+        
+        foreach (var content in chatMessage.Contents)
+        {
+            switch (content)
+            {
+                case TextContent textContent:
+                    parts.Add(new TextPart { Text = textContent.Text ?? string.Empty });
+                    break;
+                case FunctionCallContent functionCall:
+                    parts.Add(new ToolCallPart
+                    {
+                        ToolCallId = functionCall.CallId ?? string.Empty,
+                        Name = functionCall.Name,
+                        Arguments = functionCall.Arguments is not null 
+                            ? JsonSerializer.Serialize(functionCall.Arguments) 
+                            : "{}"
+                    });
+                    break;
+                case FunctionResultContent functionResult:
+                    parts.Add(new ToolResultPart
+                    {
+                        ToolCallId = functionResult.CallId ?? string.Empty,
+                        ToolName = string.Empty, // FunctionResultContent doesn't have Name property
+                        IsSuccess = true,
+                        Content = functionResult.Result?.ToString() ?? string.Empty
+                    });
+                    break;
+            }
+        }
+        
+        return new Message
+        {
+            Role = role,
+            Parts = parts
+        };
+    }
+    
+    private void AddAssistantMessageToContext(IContextManager contextManager, ChatMessage response)
+    {
+        var message = ConvertToMessage(response);
+        message.Metadata.AgentId = Id;
+        contextManager.AddMessage(message);
+    }
+    
+    private void AddToolResultsToContext(
+        IContextManager contextManager, 
+        List<(string CallId, string ToolName, ToolResult Result)> toolResults)
+    {
+        var parts = toolResults.Select(tr => (MessagePart)new ToolResultPart
+        {
+            ToolCallId = tr.CallId,
+            ToolName = tr.ToolName,
+            IsSuccess = tr.Result.IsSuccess,
+            Content = tr.Result.Content
+        }).ToList();
+        
+        contextManager.AddMessage(new Message
+        {
+            Role = MessageRole.Tool,
+            Parts = parts
+        });
+    }
+    
+    private List<ChatMessage> RebuildChatMessages(IContextManager contextManager)
+    {
+        var result = new List<ChatMessage>();
+        
+        foreach (var message in contextManager.GetMessages())
+        {
+            var chatRole = message.Role switch
+            {
+                MessageRole.System => ChatRole.System,
+                MessageRole.User => ChatRole.User,
+                MessageRole.Assistant => ChatRole.Assistant,
+                MessageRole.Tool => ChatRole.Tool,
+                _ => ChatRole.User
+            };
+            
+            var contents = new List<AIContent>();
+            
+            foreach (var part in message.Parts)
+            {
+                switch (part)
+                {
+                    case TextPart textPart:
+                        contents.Add(new TextContent(textPart.Text));
+                        break;
+                    case ToolCallPart toolCallPart:
+                        var args = JsonSerializer.Deserialize<Dictionary<string, object?>>(toolCallPart.Arguments);
+                        contents.Add(new FunctionCallContent(toolCallPart.ToolCallId, toolCallPart.Name, args));
+                        break;
+                    case ToolResultPart toolResultPart:
+                        contents.Add(new FunctionResultContent(toolResultPart.ToolCallId, toolResultPart.Content));
+                        break;
+                }
+            }
+            
+            result.Add(new ChatMessage(chatRole, contents));
+        }
+        
+        return result;
+    }
+    
+    private int EstimateToolDefinitionTokens(ITokenEstimator tokenEstimator)
+    {
+        // 估算工具定义的 Token 数
+        var totalTokens = 0;
+        foreach (var tool in _options.Tools)
+        {
+            var detail = tool.GetDetail();
+            // 工具名称 + 描述 + 参数 schema 的估算
+            totalTokens += tokenEstimator.EstimateTokens(detail.Name);
+            totalTokens += tokenEstimator.EstimateTokens(detail.Description);
+            totalTokens += tokenEstimator.EstimateTokens(detail.ParameterSchema);
+        }
+        return totalTokens;
     }
     
     private async Task<(ChatMessage Response, TokenUsage TokenUsage)> CallLlmAsync(
@@ -248,6 +435,40 @@ public class ToolLoopAgent : IAgent
         
         var response = await chatClient.GetResponseAsync(messages, chatOptions, cancellationToken);
         
+        // 打印原始 API 响应，方便调试
+        _logger.LogInformation("[LLM Response] FinishReason={FinishReason}, MessageCount={MessageCount}",
+            response.FinishReason, response.Messages.Count);
+        
+        foreach (var msg in response.Messages)
+        {
+            _logger.LogInformation("[LLM Response] Message Role={Role}, ContentCount={ContentCount}",
+                msg.Role, msg.Contents.Count);
+            
+            foreach (var content in msg.Contents)
+            {
+                switch (content)
+                {
+                    case TextContent textContent:
+                        _logger.LogInformation("[LLM Response] TextContent: {Text}", 
+                            textContent.Text?.Length > 200 ? textContent.Text[..200] + "..." : textContent.Text);
+                        break;
+                    case FunctionCallContent functionCall:
+                        // 打印工具调用的原始参数
+                        var argsJson = functionCall.Arguments != null 
+                            ? JsonSerializer.Serialize(functionCall.Arguments) 
+                            : "null";
+                        _logger.LogInformation(
+                            "[LLM Response] FunctionCall: Name={Name}, CallId={CallId}, Arguments={Arguments}",
+                            functionCall.Name, functionCall.CallId, argsJson);
+                        break;
+                    default:
+                        _logger.LogInformation("[LLM Response] OtherContent: Type={Type}", 
+                            content.GetType().Name);
+                        break;
+                }
+            }
+        }
+        
         var tokenUsage = new TokenUsage(
             (int)(response.Usage?.InputTokenCount ?? 0),
             (int)(response.Usage?.OutputTokenCount ?? 0));
@@ -262,8 +483,15 @@ public class ToolLoopAgent : IAgent
     /// <summary>
     /// 将 ITool 转换为 AITool
     /// </summary>
-    private static AITool CreateAiToolFromTool(ITool tool)
+    private AITool CreateAiToolFromTool(ITool tool)
     {
+        var detail = tool.GetDetail();
+        
+        // 打印工具定义，方便调试
+        _logger.LogInformation(
+            "[CreateAiTool] Name={Name}, ParameterSchema={Schema}",
+            detail.Name, detail.ParameterSchema);
+        
         // 使用 AIFunctionFactory.Create 创建 AIFunction
         // 传入一个占位委托，实际执行在 ExecuteToolCallsAsync 中处理
         return AIFunctionFactory.Create(
@@ -302,12 +530,23 @@ public class ToolLoopAgent : IAgent
                         ? JsonSerializer.SerializeToElement(toolCall.Arguments)
                         : default;
                     
+                    var rawArguments = parameters.ValueKind != JsonValueKind.Undefined 
+                        ? parameters.GetRawText() 
+                        : "{}";
+                    
+                    _logger.LogDebug(
+                        "[{ExecutionId}] 工具 '{ToolName}' 参数: Arguments={Arguments}, Parameters.ValueKind={ValueKind}, RawArguments={RawArguments}",
+                        Guid.NewGuid().ToString("N")[..8], toolCall.Name, 
+                        toolCall.Arguments is not null ? JsonSerializer.Serialize(toolCall.Arguments) : "null",
+                        parameters.ValueKind,
+                        rawArguments);
+                    
                     var toolContext = new ToolExecutionContext
                     {
                         SessionId = sessionId,
                         AgentId = Id,
                         Parameters = parameters,
-                        RawArguments = parameters.GetRawText(),
+                        RawArguments = rawArguments,
                         Variables = variables,
                         ToolCallId = toolCall.CallId ?? Guid.NewGuid().ToString()
                     };

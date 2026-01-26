@@ -54,14 +54,24 @@ public abstract class ToolBase<TParams> : ITool where TParams : class, new()
     {
         try
         {
+            // 调试日志：打印原始参数
+            Console.WriteLine($"[ToolBase] Tool={Name}, Parameters.ValueKind={context.Parameters.ValueKind}");
+            Console.WriteLine($"[ToolBase] Tool={Name}, RawArguments={context.RawArguments}");
+            if (context.Parameters.ValueKind != JsonValueKind.Undefined)
+            {
+                Console.WriteLine($"[ToolBase] Tool={Name}, Parameters.GetRawText()={context.Parameters.GetRawText()}");
+            }
+            
             // 反序列化参数
             TParams parameters;
             try
             {
                 parameters = DeserializeParameters(context.Parameters);
+                Console.WriteLine($"[ToolBase] Tool={Name}, Deserialized parameters={JsonSerializer.Serialize(parameters, JsonSerializerOptions)}");
             }
             catch (JsonException ex)
             {
+                Console.WriteLine($"[ToolBase] Tool={Name}, Deserialization failed: {ex.Message}");
                 return ToolResult.Failure(
                     $"参数解析失败: {ex.Message}",
                     "INVALID_PARAMETERS",
@@ -72,6 +82,7 @@ public abstract class ToolBase<TParams> : ITool where TParams : class, new()
             var validationErrors = ValidateParameters(parameters);
             if (validationErrors.Count > 0)
             {
+                Console.WriteLine($"[ToolBase] Tool={Name}, Validation errors: {string.Join("; ", validationErrors)}");
                 return ToolResult.Failure(
                     $"参数验证失败: {string.Join("; ", validationErrors)}",
                     "VALIDATION_FAILED",

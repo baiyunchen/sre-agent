@@ -25,6 +25,12 @@ public class ModelProviderOptions
     public required Dictionary<ModelCapability, string> Models { get; init; }
     
     /// <summary>
+    /// 各模型的 Token 限制配置
+    /// Key: 模型名称, Value: Token 限制信息
+    /// </summary>
+    public Dictionary<string, ModelTokenLimits> TokenLimits { get; init; } = new();
+    
+    /// <summary>
     /// 各模型的定价信息
     /// Key: 模型名称, Value: 定价信息
     /// </summary>
@@ -51,6 +57,25 @@ public class ModelProviderOptions
         
         throw new InvalidOperationException(
             $"No model configured for capability '{capability}' in provider '{Name}'.");
+    }
+    
+    /// <summary>获取指定模型的 Token 限制</summary>
+    public ModelTokenLimits GetTokenLimits(string modelName)
+    {
+        if (TokenLimits.TryGetValue(modelName, out var limits))
+        {
+            return limits;
+        }
+        
+        // 返回默认值
+        return ModelTokenLimits.Default;
+    }
+    
+    /// <summary>获取指定能力级别对应模型的 Token 限制</summary>
+    public ModelTokenLimits GetTokenLimits(ModelCapability capability)
+    {
+        var modelName = GetModel(capability);
+        return GetTokenLimits(modelName);
     }
     
     /// <summary>获取指定模型的定价信息</summary>
