@@ -68,6 +68,7 @@ public static class WellKnownModelProviders
     /// <summary>
     /// 智谱 AI (Zhipu)
     /// Base URL: https://open.bigmodel.cn/api/paas/v4/
+    /// 模型参考: https://docs.bigmodel.cn/cn/guide/start/model-overview
     /// 价格参考: https://open.bigmodel.cn/pricing
     /// </summary>
     public static ModelProviderOptions Zhipu => new()
@@ -77,26 +78,54 @@ public static class WellKnownModelProviders
         ApiKeyEnvironmentVariable = "ZHIPU_API_KEY",
         Models = new Dictionary<ModelCapability, string>
         {
-            [ModelCapability.Large] = "glm-4-plus",
-            [ModelCapability.Medium] = "glm-4-flash",
-            [ModelCapability.Small] = "glm-4-flash",
-            [ModelCapability.Reasoning] = "glm-4-plus",
-            [ModelCapability.Coding] = "codegeex-4"
+            [ModelCapability.Large] = "glm-4.6",           // 最新旗舰基座模型，通用对话、推理与智能体能力全面升级
+            [ModelCapability.Medium] = "glm-4.6",      // 高性价比，推理、编码和智能体任务表现强劲
+            [ModelCapability.Small] = "glm-4.7-flash",     // 免费模型，最新基座模型的普惠版本
+            [ModelCapability.Reasoning] = "glm-4.7",       // 旗舰模型用于复杂推理
+            [ModelCapability.Coding] = "codegeex-4"        // 代码模型，适用于代码自动补全任务
         },
         Pricing = new Dictionary<string, ModelPricing>
         {
-            ["glm-4-plus"] = new()
+            ["glm-4.7"] = new()
             {
-                ModelName = "glm-4-plus",
+                ModelName = "glm-4.7",
                 InputPricePerMillion = 50m,
                 OutputPricePerMillion = 50m,
-                CachedInputPricePerMillion = null // 智谱暂不支持缓存计费
+                CachedInputPricePerMillion = null
             },
-            ["glm-4-flash"] = new()
+            ["glm-4.6"] = new()
             {
-                ModelName = "glm-4-flash",
-                InputPricePerMillion = 0.1m,
-                OutputPricePerMillion = 0.1m,
+                ModelName = "glm-4.6",
+                InputPricePerMillion = 50m,
+                OutputPricePerMillion = 50m,
+                CachedInputPricePerMillion = null
+            },
+            ["glm-4.5-air"] = new()
+            {
+                ModelName = "glm-4.5-air",
+                InputPricePerMillion = 2m,
+                OutputPricePerMillion = 2m,
+                CachedInputPricePerMillion = null
+            },
+            ["glm-4.5-airx"] = new()
+            {
+                ModelName = "glm-4.5-airx",
+                InputPricePerMillion = 5m,
+                OutputPricePerMillion = 5m,
+                CachedInputPricePerMillion = null
+            },
+            ["glm-4.7-flash"] = new()
+            {
+                ModelName = "glm-4.7-flash",
+                InputPricePerMillion = 0m,  // 免费模型
+                OutputPricePerMillion = 0m,
+                CachedInputPricePerMillion = null
+            },
+            ["glm-4-long"] = new()
+            {
+                ModelName = "glm-4-long",
+                InputPricePerMillion = 1m,
+                OutputPricePerMillion = 1m,
                 CachedInputPricePerMillion = null
             },
             ["codegeex-4"] = new()
