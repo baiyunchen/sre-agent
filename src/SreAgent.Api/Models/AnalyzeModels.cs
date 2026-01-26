@@ -85,7 +85,7 @@ public record TaskItem
     /// <summary>
     /// 任务 ID
     /// </summary>
-    public int Id { get; init; }
+    public string Id { get; init; } = string.Empty;
 
     /// <summary>
     /// 任务描述

@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using SreAgent.Api.Models;
 using SreAgent.Application.Agents;
-using SreAgent.Application.Tools;
+using SreAgent.Application.Tools.Todo.Services;
 using SreAgent.Framework.Agents;
 using SreAgent.Framework.Contexts;
 using SreAgent.Framework.Providers;
@@ -15,18 +15,18 @@ namespace SreAgent.Api.Controllers;
 [Route("api/[controller]")]
 public class SreController : ControllerBase
 {
-    private readonly TodoTool _todoTool;
+    private readonly ITodoService _todoService;
     private readonly ModelProvider _modelProvider;
     private readonly ILogger<SreController> _logger;
     private readonly ILogger<ToolLoopAgent> _agentLogger;
 
     public SreController(
-        TodoTool todoTool,
+        ITodoService todoService,
         ModelProvider modelProvider,
         ILogger<SreController> logger,
         ILogger<ToolLoopAgent> agentLogger)
     {
-        _todoTool = todoTool;
+        _todoService = todoService;
         _modelProvider = modelProvider;
         _logger = logger;
         _agentLogger = agentLogger;
@@ -50,7 +50,7 @@ public class SreController : ControllerBase
             request.Title, request.Severity, request.AffectedService);
 
         // 创建 SRE 协调器 Agent
-        var agent = SreCoordinatorAgent.Create(_modelProvider, _todoTool, _agentLogger);
+        var agent = SreCoordinatorAgent.Create(_modelProvider, _todoService, _agentLogger);
 
         // 构建故障描述
         var input = $"""
@@ -79,7 +79,7 @@ public class SreController : ControllerBase
         var result = await agent.ExecuteAsync(context, cancellationToken);
 
         // 获取生成的 Todo 列表
-        var todos = _todoTool.GetTodos(context.SessionId);
+        var todos = await _todoService.GetAsync(context.SessionId);
 
         _logger.LogInformation(
             "故障分析完成: 成功={Success}, 迭代次数={Iterations}, Token使用={Tokens}",
@@ -93,10 +93,10 @@ public class SreController : ControllerBase
             Tasks = todos.Select(t => new TaskItem
             {
                 Id = t.Id,
-                Task = t.Task,
+                Task = t.Content,
                 Priority = t.Priority.ToString(),
                 Status = t.Status.ToString(),
-                Notes = t.Notes
+                Notes = null
             }).ToList(),
             TokenUsage = new TokenUsageInfo
             {
