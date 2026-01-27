@@ -31,7 +31,7 @@ public class LlmCaller
     /// <returns>LLM 响应和 Token 使用量</returns>
     public async Task<(ChatMessage Response, TokenUsage TokenUsage)> CallAsync(
         IChatClient chatClient,
-        List<ChatMessage> messages,
+        IReadOnlyList<ChatMessage> messages,
         IReadOnlyList<ITool> tools,
         double temperature,
         int? maxTokens,
@@ -44,7 +44,7 @@ public class LlmCaller
             Tools = ToolExecutor.ToAITools(tools)
         };
 
-        var response = await chatClient.GetResponseAsync(messages, chatOptions, cancellationToken);
+        var response = await chatClient.GetResponseAsync(messages.ToList(), chatOptions, cancellationToken);
 
         LogResponse(response);
 

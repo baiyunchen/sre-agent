@@ -179,106 +179,22 @@ public class MessageConverterTests
 
     #endregion
 
-    #region RebuildFromContext Tests
+    #region Roundtrip Tests
 
     [Fact]
-    public void RebuildFromContext_WithMultipleMessages_ShouldConvertAll()
+    public void Roundtrip_FromChatMessage_ToChatMessage_ShouldPreserveContent()
     {
         // Arrange
-        var tokenEstimator = new SimpleTokenEstimator();
-        var contextManager = new DefaultContextManager(tokenEstimator);
-        
-        contextManager.SetSystemMessage("You are a helpful assistant.");
-        contextManager.AddMessage(new Message
-        {
-            Role = MessageRole.User,
-            Parts = [new TextPart { Text = "Hello" }]
-        });
-        contextManager.AddMessage(new Message
-        {
-            Role = MessageRole.Assistant,
-            Parts = [new TextPart { Text = "Hi there!" }]
-        });
+        var originalMessage = new ChatMessage(ChatRole.User, "Hello, world!");
 
         // Act
-        var result = MessageConverter.RebuildFromContext(contextManager);
+        var internalMessage = MessageConverter.FromChatMessage(originalMessage);
+        var roundtrippedMessage = MessageConverter.ToChatMessage(internalMessage);
 
         // Assert
-        result.Should().HaveCount(3);
-        result[0].Role.Should().Be(ChatRole.System);
-        result[1].Role.Should().Be(ChatRole.User);
-        result[2].Role.Should().Be(ChatRole.Assistant);
-    }
-
-    #endregion
-
-    #region CreateToolResultMessage Tests
-
-    [Fact]
-    public void CreateToolResultMessage_WithSingleResult_ShouldCreateCorrectly()
-    {
-        // Arrange
-        var toolResults = new List<(string CallId, string ToolName, ToolResult Result)>
-        {
-            ("call_123", "test_tool", ToolResult.Success("Operation completed"))
-        };
-
-        // Act
-        var result = MessageConverter.CreateToolResultMessage(toolResults);
-
-        // Assert
-        result.Role.Should().Be(ChatRole.Tool);
-        result.Contents.Should().HaveCount(1);
-        result.Contents[0].Should().BeOfType<FunctionResultContent>();
-        var functionResult = (FunctionResultContent)result.Contents[0];
-        functionResult.CallId.Should().Be("call_123");
-        functionResult.Result.Should().Be("Operation completed");
-    }
-
-    [Fact]
-    public void CreateToolResultMessage_WithMultipleResults_ShouldCreateCorrectly()
-    {
-        // Arrange
-        var toolResults = new List<(string CallId, string ToolName, ToolResult Result)>
-        {
-            ("call_1", "tool_a", ToolResult.Success("Result A")),
-            ("call_2", "tool_b", ToolResult.Failure("Error B")),
-            ("call_3", "tool_c", ToolResult.Success("Result C"))
-        };
-
-        // Act
-        var result = MessageConverter.CreateToolResultMessage(toolResults);
-
-        // Assert
-        result.Role.Should().Be(ChatRole.Tool);
-        result.Contents.Should().HaveCount(3);
-    }
-
-    #endregion
-
-    #region CreateToolResultInternalMessage Tests
-
-    [Fact]
-    public void CreateToolResultInternalMessage_ShouldCreateWithToolRole()
-    {
-        // Arrange
-        var toolResults = new List<(string CallId, string ToolName, ToolResult Result)>
-        {
-            ("call_123", "test_tool", ToolResult.Success("Operation completed"))
-        };
-
-        // Act
-        var result = MessageConverter.CreateToolResultInternalMessage(toolResults);
-
-        // Assert
-        result.Role.Should().Be(MessageRole.Tool);
-        result.Parts.Should().HaveCount(1);
-        result.Parts[0].Should().BeOfType<ToolResultPart>();
-        var toolResultPart = (ToolResultPart)result.Parts[0];
-        toolResultPart.ToolCallId.Should().Be("call_123");
-        toolResultPart.ToolName.Should().Be("test_tool");
-        toolResultPart.IsSuccess.Should().BeTrue();
-        toolResultPart.Content.Should().Be("Operation completed");
+        roundtrippedMessage.Role.Should().Be(originalMessage.Role);
+        roundtrippedMessage.Contents.Should().HaveCount(1);
+        ((TextContent)roundtrippedMessage.Contents[0]).Text.Should().Be("Hello, world!");
     }
 
     #endregion

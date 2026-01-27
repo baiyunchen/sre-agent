@@ -3,6 +3,44 @@ using System.ComponentModel.DataAnnotations;
 namespace SreAgent.Api.Models;
 
 /// <summary>
+/// 聊天请求（支持新对话和追问）
+/// </summary>
+public record ChatRequest
+{
+    /// <summary>
+    /// 会话 ID（可选）
+    /// - 不传：开始新对话
+    /// - 传入：在现有对话基础上追问
+    /// </summary>
+    public Guid? SessionId { get; init; }
+
+    /// <summary>用户消息</summary>
+    [Required(ErrorMessage = "消息不能为空")]
+    public required string Message { get; init; }
+}
+
+/// <summary>
+/// 聊天响应
+/// </summary>
+public record ChatResponse
+{
+    /// <summary>会话 ID（用于后续追问）</summary>
+    public Guid SessionId { get; init; }
+
+    /// <summary>Agent 输出</summary>
+    public string? Output { get; init; }
+
+    /// <summary>是否成功</summary>
+    public bool IsSuccess { get; init; }
+
+    /// <summary>错误信息</summary>
+    public string? Error { get; init; }
+
+    /// <summary>Token 使用统计</summary>
+    public TokenUsageInfo TokenUsage { get; init; } = new();
+}
+
+/// <summary>
 /// 故障分析请求
 /// </summary>
 public record AnalyzeRequest

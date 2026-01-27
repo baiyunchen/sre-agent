@@ -1,12 +1,13 @@
 using System.Text.Json;
 using Microsoft.Extensions.AI;
 using SreAgent.Framework.Contexts;
-using SreAgent.Framework.Results;
 
 namespace SreAgent.Framework.Agents;
 
 /// <summary>
-/// 消息转换器 - 负责 ChatMessage 与内部 Message 之间的转换
+/// 消息转换器 - 提供 ChatMessage 与内部 Message 之间的静态转换方法
+/// 注意：大部分转换逻辑已迁移到 ContextManager 和 DefaultChatMessageBuilder
+/// 此类保留用于需要独立转换的场景
 /// </summary>
 public static class MessageConverter
 {
@@ -47,7 +48,7 @@ public static class MessageConverter
                     parts.Add(new ToolResultPart
                     {
                         ToolCallId = functionResult.CallId ?? string.Empty,
-                        ToolName = string.Empty, // FunctionResultContent doesn't have Name property
+                        ToolName = string.Empty,
                         IsSuccess = true,
                         Content = functionResult.Result?.ToString() ?? string.Empty
                     });
@@ -96,57 +97,5 @@ public static class MessageConverter
         }
 
         return new ChatMessage(chatRole, contents);
-    }
-
-    /// <summary>
-    /// 从上下文管理器重建 ChatMessage 列表
-    /// </summary>
-    public static List<ChatMessage> RebuildFromContext(IContextManager contextManager)
-    {
-        var result = new List<ChatMessage>();
-
-        foreach (var message in contextManager.GetMessages())
-        {
-            result.Add(ToChatMessage(message));
-        }
-
-        return result;
-    }
-
-    /// <summary>
-    /// 从工具执行结果创建 Tool 角色的 ChatMessage
-    /// </summary>
-    public static ChatMessage CreateToolResultMessage(
-        List<(string CallId, string ToolName, ToolResult Result)> toolResults)
-    {
-        var contents = toolResults
-            .Select(tr => new FunctionResultContent(
-                tr.CallId,
-                tr.Result.Content))
-            .Cast<AIContent>()
-            .ToList();
-
-        return new ChatMessage(ChatRole.Tool, contents);
-    }
-
-    /// <summary>
-    /// 将工具执行结果转换为内部 Message
-    /// </summary>
-    public static Message CreateToolResultInternalMessage(
-        List<(string CallId, string ToolName, ToolResult Result)> toolResults)
-    {
-        var parts = toolResults.Select(tr => (MessagePart)new ToolResultPart
-        {
-            ToolCallId = tr.CallId,
-            ToolName = tr.ToolName,
-            IsSuccess = tr.Result.IsSuccess,
-            Content = tr.Result.Content
-        }).ToList();
-
-        return new Message
-        {
-            Role = MessageRole.Tool,
-            Parts = parts
-        };
     }
 }

@@ -30,6 +30,7 @@ public class ToolExecutor
     /// <param name="tools">可用的工具列表</param>
     /// <param name="variables">共享变量</param>
     /// <param name="cancellationToken">取消令牌</param>
+    /// <param name="parentContext">父 Agent 的上下文（用于子 Agent 继承）</param>
     /// <returns>工具执行结果列表</returns>
     public async Task<List<(string CallId, string ToolName, ToolResult Result)>> ExecuteAsync(
         Guid sessionId,
@@ -37,7 +38,8 @@ public class ToolExecutor
         List<FunctionCallContent> toolCalls,
         IReadOnlyList<ITool> tools,
         IReadOnlyDictionary<string, object> variables,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IContextManager? parentContext = null)
     {
         var results = new List<(string, string, ToolResult)>();
 
@@ -62,6 +64,7 @@ public class ToolExecutor
                     tool,
                     toolCall,
                     variables,
+                    parentContext,
                     cancellationToken);
             }
 
@@ -80,6 +83,7 @@ public class ToolExecutor
         ITool tool,
         FunctionCallContent toolCall,
         IReadOnlyDictionary<string, object> variables,
+        IContextManager? parentContext,
         CancellationToken cancellationToken)
     {
         var toolSw = Stopwatch.StartNew();
@@ -96,11 +100,8 @@ public class ToolExecutor
                 : "{}";
 
             _logger.LogDebug(
-                "工具 '{ToolName}' 参数: Arguments={Arguments}, Parameters.ValueKind={ValueKind}, RawArguments={RawArguments}",
-                toolCall.Name,
-                toolCall.Arguments is not null ? JsonSerializer.Serialize(toolCall.Arguments) : "null",
-                parameters.ValueKind,
-                rawArguments);
+                "工具 '{ToolName}' 参数: {RawArguments}",
+                toolCall.Name, rawArguments);
 
             var toolContext = new ToolExecutionContext
             {
@@ -109,14 +110,14 @@ public class ToolExecutor
                 Parameters = parameters,
                 RawArguments = rawArguments,
                 Variables = variables,
-                ToolCallId = toolCall.CallId ?? Guid.NewGuid().ToString()
+                ToolCallId = toolCall.CallId ?? Guid.NewGuid().ToString(),
+                ParentContext = parentContext
             };
 
             result = await tool.ExecuteAsync(toolContext, cancellationToken);
         }
         catch (Exception ex)
         {
-            // 即使工具抛异常，也转为 Result 返回给 LLM
             result = ToolResult.FromException(ex);
         }
 
