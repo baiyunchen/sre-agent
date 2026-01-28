@@ -34,49 +34,176 @@
 Framework 提供的核心基础 Agent 实现，实现标准的 ReAct 模式。
 
 ```csharp
-// Framework 层提供的基础实现
+/// <summary>
+/// 工具循环 Agent - Framework 提供的基础实现
+/// 实现标准的 ReAct 模式：Think -> Act -> Observe 循环
+/// </summary>
 public class ToolLoopAgent : IAgent
 {
-    // 标准的 Think -> Act -> Observe 循环
-    // 不包含任何业务逻辑
+    public string Id { get; }
+    public string Name { get; }
+    public string Description { get; }
+    public AgentOptions Options { get; }
+    
+    public ToolLoopAgent(
+        string id,
+        string name,
+        string description,
+        ModelProvider modelProvider,
+        AgentOptions options,
+        ILogger<ToolLoopAgent>? logger = null);
+    
+    public async Task<AgentResult> ExecuteAsync(
+        IContextManager context,
+        IReadOnlyDictionary<string, object>? variables = null,
+        CancellationToken cancellationToken = default)
+    {
+        // 1. 配置上下文 Token 限制
+        ConfigureContextTokenLimit(context);
+        
+        // 2. 运行主循环
+        return await RunMainLoop(context, variables ?? new Dictionary<string, object>(), cancellationToken);
+    }
+    
+    private async Task<AgentResult> RunMainLoop(
+        IContextManager context,
+        IReadOnlyDictionary<string, object> variables,
+        CancellationToken cancellationToken)
+    {
+        var totalTokenUsage = new TokenUsage();
+        
+        for (var iteration = 0; iteration < Options.MaxIterations; iteration++)
+        {
+            // 调用 LLM
+            var (response, tokenUsage) = await _llmCaller.CallAsync(
+                chatClient,
+                context.GetChatMessages(),
+                Options.Tools,
+                Options.Temperature,
+                Options.MaxTokens,
+                cancellationToken);
+            
+            totalTokenUsage += tokenUsage;
+            context.RecordTokenUsage(tokenUsage.PromptTokens, tokenUsage.CompletionTokens);
+            
+            // 处理响应...
+            var toolCalls = response.Message.Contents.OfType<FunctionCallContent>().ToList();
+            
+            if (toolCalls.Count == 0)
+            {
+                // 没有工具调用，返回最终结果
+                return AgentResult.Success(output, context, totalTokenUsage, iteration + 1);
+            }
+            
+            // 执行工具调用
+            await HandleToolCallsAsync(context, toolCalls, variables, cancellationToken);
+        }
+        
+        return AgentResult.Failure("MAX_ITERATIONS", "Reached maximum iterations");
+    }
 }
 ```
 
 **特点**：
 - 实现标准的工具调用循环
 - 支持可配置的最大迭代次数
-- 集成 Hooks 系统
-- 支持上下文管理
+- 自动管理上下文 Token 限制
+- 支持子 Agent 调用
 
-### 2.2 AgentAsTool
+### 2.2 SubAgentTool
 
 将 Agent 包装为 Tool，实现多 Agent 协作的核心能力。
 
 ```csharp
-// 将任意 Agent 包装为 Tool
-var diagnosticTool = new AgentAsTool(diagnosticAgent, new AgentAsToolOptions
+/// <summary>
+/// 子 Agent 工具 - 将 Agent 包装为可调用的 Tool
+/// 继承自 ToolBase<SubAgentTool.Parameters>
+/// </summary>
+public class SubAgentTool : ToolBase<SubAgentTool.Parameters>
 {
-    ToolName = "analyze_with_diagnostic_agent",
-    ToolDescription = "Delegate complex diagnostic tasks to the diagnostic specialist agent"
-});
-
-// 然后可以被其他 Agent 作为工具调用
-var coordinatorAgent = new ToolLoopAgent(
-    id: "coordinator",
-    name: "Coordinator Agent",
-    description: "Coordinates multiple specialist agents",
-    chatClient: chatClient,
-    options: new AgentOptions
+    private readonly IAgent _agent;
+    private readonly ModelProvider _modelProvider;
+    
+    public override string Name { get; }
+    public override string Summary => $"Delegate task to {_agent.Name}";
+    public override string Description { get; }
+    public override string Category => "Agent Delegation";
+    
+    public SubAgentTool(IAgent agent, ModelProvider modelProvider)
     {
-        Tools = new[] { diagnosticTool, logAnalysisTool, metricsTool }
+        _agent = agent;
+        _modelProvider = modelProvider;
+        Name = $"delegate_to_{agent.Id}";
+        Description = BuildDescription();
     }
-);
+    
+    protected override async Task<ToolResult> ExecuteAsync(
+        Parameters parameters,
+        ToolExecutionContext context,
+        CancellationToken cancellationToken)
+    {
+        // 1. 创建子 Agent 上下文
+        var childContext = DefaultContextManager.StartNew(
+            new SimpleTokenEstimator(),
+            new ContextManagerOptions());
+        
+        // 2. 设置系统提示
+        childContext.SetSystemMessage(_agent.Options.SystemPrompt ?? "");
+        
+        // 3. 添加父上下文摘要（如果有）
+        if (context.ParentContext != null)
+        {
+            var summary = context.ParentContext.GenerateSummary();
+            childContext.AddUserMessage(BuildInput(parameters.Task, summary));
+        }
+        else
+        {
+            childContext.AddUserMessage(parameters.Task);
+        }
+        
+        // 4. 执行子 Agent
+        var result = await _agent.ExecuteAsync(childContext, context.Variables, cancellationToken);
+        
+        if (result.IsSuccess)
+        {
+            return ToolResult.Success(result.Output ?? "Agent completed without output");
+        }
+        else
+        {
+            return ToolResult.Failure(
+                $"Agent failed: {result.Error?.Message}",
+                result.Error?.Code,
+                result.IsRetryable);
+        }
+    }
+    
+    public class Parameters
+    {
+        [Required]
+        [Description("The task to delegate to the agent")]
+        public string Task { get; set; } = "";
+    }
+}
+```
+
+**使用示例**：
+
+```csharp
+// 使用 AgentBuilder 创建带子 Agent 的协调器
+var coordinatorAgent = AgentBuilder.Create("coordinator")
+    .WithName("Coordinator Agent")
+    .WithDescription("Coordinates multiple specialist agents")
+    .WithSystemPrompt(coordinatorPrompt)
+    .WithSubAgent(logAnalysisAgent)      // 自动包装为 SubAgentTool
+    .WithSubAgent(metricsAnalysisAgent)
+    .WithSubAgent(playbookAgent)
+    .Build(modelProvider);
 ```
 
 **使用场景**：
 - 协调者 Agent 调度专家 Agent
 - 复杂任务的分解和委托
-- Agent 间的信息传递
+- Agent 间的上下文传递（通过摘要）
 
 ---
 
@@ -84,13 +211,78 @@ var coordinatorAgent = new ToolLoopAgent(
 
 ### 3.1 业务 Agent 设计原则
 
-1. **继承或组合 Framework 能力**：基于 `ToolLoopAgent` 构建
+1. **使用 AgentBuilder 流畅 API**：通过 `AgentBuilder` 创建 Agent
 2. **专注业务逻辑**：System Prompt、工具选择、特定行为
-3. **可配置性**：通过选项和 Hooks 支持定制
+3. **可配置性**：通过选项支持定制
 
 ### 3.2 创建业务 Agent 的方式
 
-#### 方式一：工厂模式（推荐）
+#### 方式一：静态工厂方法（当前实现）
+
+当前项目使用静态工厂方法创建 Agent：
+
+```csharp
+/// <summary>
+/// SRE 协调器 Agent - 负责故障分析和任务管理
+/// </summary>
+public static class SreCoordinatorAgent
+{
+    public const string AgentId = "sre-coordinator";
+    public const string AgentName = "SRE 故障分析协调器";
+    public const string AgentDescription = "负责分析线上故障告警，制定故障分析和排查计划";
+    
+    private const string SystemPrompt = """
+        你是一个专业的SRE故障分析协调器。你的职责是：
+        1. 接收和分析线上故障告警
+        2. 识别故障类型和影响范围
+        3. 制定故障分析和排查计划
+        4. 使用 todo 工具管理分析任务
+        
+        ## 故障分析框架
+        
+        ### 故障识别
+        - 告警类型（性能/可用性/安全/资源）
+        - 影响范围（服务/用户/业务）
+        - 紧急程度（P0-P3）
+        
+        ### 初步诊断方向
+        - 基础设施层（网络/存储/计算）
+        - 应用层（服务/依赖/配置）
+        - 数据层（数据库/缓存/队列）
+        - 外部依赖（第三方服务/API）
+        
+        ### 分析计划制定
+        使用 todo_write 工具创建结构化的分析计划，包括：
+        - 信息收集任务
+        - 日志分析任务
+        - 指标检查任务
+        - 根因定位任务
+        """;
+    
+    /// <summary>
+    /// 创建 SRE 协调器 Agent
+    /// </summary>
+    public static ToolLoopAgent Create(
+        ModelProvider modelProvider,
+        ITodoService todoService,
+        ILogger<ToolLoopAgent>? logger = null)
+    {
+        return AgentBuilder.Create(AgentId)
+            .WithName(AgentName)
+            .WithDescription(AgentDescription)
+            .WithSystemPrompt(SystemPrompt)
+            .WithModelCapability(ModelCapability.Medium)
+            .WithMaxIterations(15)
+            .WithTemperature(0.3)
+            .WithTool(new TodoWriteTool(todoService))
+            .WithTool(new TodoReadTool(todoService))
+            .WithLogger(logger)
+            .Build(modelProvider);
+    }
+}
+```
+
+#### 方式二：工厂类模式（扩展方向）
 
 ```csharp
 /// <summary>
@@ -98,157 +290,57 @@ var coordinatorAgent = new ToolLoopAgent(
 /// </summary>
 public class SreAgentFactory
 {
-    private readonly IChatClient _chatClient;
+    private readonly ModelProvider _modelProvider;
     private readonly IServiceProvider _serviceProvider;
     
     public IAgent CreateDiagnosticAgent(DiagnosticAgentOptions options)
     {
-        var tools = new List<ITool>
-        {
-            _serviceProvider.GetRequiredService<SumoLogicQueryTool>(),
-            _serviceProvider.GetRequiredService<PrometheusQueryTool>(),
-            _serviceProvider.GetRequiredService<CloudWatchLogsTool>(),
-            _serviceProvider.GetRequiredService<K8sResourceTool>()
-        };
-        
-        return new ToolLoopAgent(
-            id: "diagnostic",
-            name: "Diagnostic Agent",
-            description: "Comprehensive diagnosis and root cause analysis agent",
-            chatClient: _chatClient,
-            options: new AgentOptions
-            {
-                Model = options.Model ?? "gpt-4",
-                SystemPrompt = LoadPrompt("diagnostic_agent.md"),
-                MaxIterations = options.MaxIterations ?? 15,
-                Temperature = 0.3,
-                Tools = tools
-            },
-            hooks: new SreAgentHooks(_serviceProvider)
-        );
+        return AgentBuilder.Create("diagnostic")
+            .WithName("Diagnostic Agent")
+            .WithDescription("Comprehensive diagnosis and root cause analysis agent")
+            .WithSystemPrompt(LoadPrompt("diagnostic_agent.md"))
+            .WithModelCapability(options.ModelCapability ?? ModelCapability.Large)
+            .WithMaxIterations(options.MaxIterations ?? 15)
+            .WithTemperature(0.3)
+            .WithTools(GetDiagnosticTools())
+            .Build(_modelProvider);
     }
     
     public IAgent CreateLogAnalysisAgent(LogAnalysisAgentOptions options)
     {
-        var tools = new List<ITool>
-        {
-            _serviceProvider.GetRequiredService<SumoLogicQueryTool>(),
-            _serviceProvider.GetRequiredService<CloudWatchLogsTool>()
-        };
-        
-        return new ToolLoopAgent(
-            id: "log_analysis",
-            name: "Log Analysis Agent",
-            description: "Specialized agent for log querying and analysis",
-            chatClient: _chatClient,
-            options: new AgentOptions
-            {
-                Model = options.Model ?? "gpt-4o-mini",  // 日志分析用更快的模型
-                SystemPrompt = LoadPrompt("log_analysis_agent.md"),
-                MaxIterations = options.MaxIterations ?? 5,
-                Temperature = 0.1,  // 更低的温度提高确定性
-                Tools = tools
-            }
-        );
+        return AgentBuilder.Create("log_analysis")
+            .WithName("Log Analysis Agent")
+            .WithDescription("Specialized agent for log querying and analysis")
+            .WithSystemPrompt(LoadPrompt("log_analysis_agent.md"))
+            .WithModelCapability(ModelCapability.Medium)  // 日志分析用中等模型
+            .WithMaxIterations(options.MaxIterations ?? 5)
+            .WithTemperature(0.1)  // 更低的温度提高确定性
+            .WithTools(GetLogAnalysisTools())
+            .Build(_modelProvider);
     }
     
     // ... 其他 Agent 创建方法
 }
 ```
 
-#### 方式二：继承封装
-
-```csharp
-/// <summary>
-/// 诊断 Agent - 通过继承封装业务逻辑
-/// </summary>
-public class DiagnosticAgent : IAgent
-{
-    private readonly ToolLoopAgent _innerAgent;
-    private readonly IKnowledgeBaseClient _knowledgeBase;
-    
-    public string Id => "diagnostic";
-    public string Name => "Diagnostic Agent";
-    public string Description => "Comprehensive diagnosis and root cause analysis";
-    
-    public DiagnosticAgent(
-        IChatClient chatClient,
-        IEnumerable<ITool> tools,
-        IKnowledgeBaseClient knowledgeBase,
-        IAgentHooks? hooks = null)
-    {
-        _knowledgeBase = knowledgeBase;
-        
-        _innerAgent = new ToolLoopAgent(
-            id: Id,
-            name: Name,
-            description: Description,
-            chatClient: chatClient,
-            options: new AgentOptions
-            {
-                SystemPrompt = GetSystemPrompt(),
-                MaxIterations = 15,
-                Temperature = 0.3,
-                Tools = tools.ToList()
-            },
-            hooks: hooks
-        );
-    }
-    
-    public async Task<AgentResult> ExecuteAsync(
-        AgentExecutionContext context,
-        CancellationToken cancellationToken = default)
-    {
-        // 业务前置处理：检索相关 Playbook
-        var ragContext = await RetrievePlaybookAsync(context);
-        
-        // 增强上下文
-        var enhancedContext = context with
-        {
-            Variables = new Dictionary<string, object>(context.Variables)
-            {
-                ["playbook_context"] = ragContext
-            }
-        };
-        
-        // 委托给内部 Agent 执行
-        return await _innerAgent.ExecuteAsync(enhancedContext, cancellationToken);
-    }
-    
-    private async Task<string> RetrievePlaybookAsync(AgentExecutionContext context)
-    {
-        // RAG 检索逻辑
-        var results = await _knowledgeBase.SearchAsync(context.Input);
-        return FormatPlaybookContext(results);
-    }
-    
-    private string GetSystemPrompt() => """
-        你是一个专业的 SRE 诊断专家。你的职责是：
-        1. 分析告警信息，理解问题症状
-        2. 使用工具收集必要的诊断信息
-        3. 结合 Playbook 知识进行根因分析
-        4. 给出明确的诊断结论和建议
-        
-        诊断原则：
-        - 先收集证据，再下结论
-        - 优先检查最可能的原因
-        - 记录每一步的推理过程
-        ...
-        """;
-}
-```
-
 ### 3.3 SRE 业务 Agent 定义
 
-| Agent | 职责 | 使用的工具 | 模型建议 |
+#### 3.3.1 当前已实现
+
+| Agent | 职责 | 使用的工具 | 模型能力 |
 |-------|------|-----------|----------|
-| DiagnosticAgent | 综合诊断和根因分析 | All | gpt-4 |
-| LogAnalysisAgent | 日志查询和分析 | SumoLogic, CloudWatch Logs | gpt-4o-mini |
-| MetricsAnalysisAgent | 指标查询和分析 | Prometheus, CloudWatch Metrics | gpt-4o-mini |
-| PlaybookAgent | 检索和匹配 Playbook | Knowledge Base | gpt-4o-mini |
-| K8sAgent | K8S 资源检查 | K8S API | gpt-4o-mini |
-| AWSAgent | AWS 资源检查 | AWS SDK | gpt-4o-mini |
-| CoordinatorAgent | 任务分解和协调 | AgentAsTools | gpt-4 |
+| SreCoordinatorAgent | 故障分析协调、任务管理 | TodoRead, TodoWrite | Medium |
+
+#### 3.3.2 规划中的 Agent
+
+| Agent | 职责 | 使用的工具 | 模型能力 |
+|-------|------|-----------|----------|
+| DiagnosticAgent | 综合诊断和根因分析 | All | Large |
+| LogAnalysisAgent | 日志查询和分析 | SumoLogic, CloudWatch Logs | Medium |
+| MetricsAnalysisAgent | 指标查询和分析 | Prometheus, CloudWatch Metrics | Medium |
+| PlaybookAgent | 检索和匹配 Playbook | Knowledge Base | Small |
+| K8sAgent | K8S 资源检查 | K8S API | Medium |
+| AWSAgent | AWS 资源检查 | AWS SDK | Medium |
 
 ---
 
@@ -261,7 +353,7 @@ public class DiagnosticAgent : IAgent
                     │   Coordinator   │
                     │     Agent       │
                     └────────┬────────┘
-                             │ 使用 AgentAsTool 调用
+                             │ 使用 SubAgentTool 调用
            ┌─────────────────┼─────────────────┐
            │                 │                 │
            ▼                 ▼                 ▼
@@ -273,64 +365,41 @@ public class DiagnosticAgent : IAgent
 
 ```csharp
 /// <summary>
-/// 协调者 Agent 示例
+/// 协调者 Agent 示例 - 使用 AgentBuilder
 /// </summary>
-public class CoordinatorAgentFactory
+public static class CoordinatorAgentFactory
 {
-    public IAgent Create(IServiceProvider services)
+    public static IAgent Create(ModelProvider modelProvider, IServiceProvider services)
     {
         // 创建专家 Agent
-        var logAgent = services.GetRequiredService<SreAgentFactory>()
-            .CreateLogAnalysisAgent(new());
-        var metricsAgent = services.GetRequiredService<SreAgentFactory>()
-            .CreateMetricsAnalysisAgent(new());
-        var playbookAgent = services.GetRequiredService<SreAgentFactory>()
-            .CreatePlaybookAgent(new());
+        var logAgent = CreateLogAnalysisAgent(modelProvider);
+        var metricsAgent = CreateMetricsAnalysisAgent(modelProvider);
+        var playbookAgent = CreatePlaybookAgent(modelProvider);
         
-        // 将专家 Agent 包装为工具
-        var tools = new List<ITool>
-        {
-            new AgentAsTool(logAgent, new AgentAsToolOptions
-            {
-                ToolName = "analyze_logs",
-                ToolDescription = "Delegate log analysis to the log specialist. Use when you need to query and analyze application logs."
-            }),
-            new AgentAsTool(metricsAgent, new AgentAsToolOptions
-            {
-                ToolName = "analyze_metrics",
-                ToolDescription = "Delegate metrics analysis to the metrics specialist. Use when you need to query and analyze system metrics."
-            }),
-            new AgentAsTool(playbookAgent, new AgentAsToolOptions
-            {
-                ToolName = "search_playbook",
-                ToolDescription = "Search for relevant playbooks and troubleshooting guides."
-            })
-        };
-        
-        return new ToolLoopAgent(
-            id: "coordinator",
-            name: "Coordinator Agent",
-            description: "Coordinates diagnosis by delegating to specialist agents",
-            chatClient: services.GetRequiredService<IChatClient>(),
-            options: new AgentOptions
-            {
-                SystemPrompt = GetCoordinatorPrompt(),
-                MaxIterations = 10,
-                Tools = tools
-            }
-        );
+        // 使用 AgentBuilder 创建协调者
+        // WithSubAgent 会自动将 Agent 包装为 SubAgentTool
+        return AgentBuilder.Create("coordinator")
+            .WithName("Coordinator Agent")
+            .WithDescription("Coordinates diagnosis by delegating to specialist agents")
+            .WithSystemPrompt(GetCoordinatorPrompt())
+            .WithModelCapability(ModelCapability.Large)
+            .WithMaxIterations(10)
+            .WithSubAgent(logAgent)       // 自动包装为 delegate_to_log_analysis
+            .WithSubAgent(metricsAgent)   // 自动包装为 delegate_to_metrics_analysis
+            .WithSubAgent(playbookAgent)  // 自动包装为 delegate_to_playbook
+            .Build(modelProvider);
     }
     
-    private string GetCoordinatorPrompt() => """
+    private static string GetCoordinatorPrompt() => """
         你是一个 SRE 诊断协调者。你的职责是：
         1. 分析告警，确定需要哪些专家来协助诊断
         2. 将任务分配给合适的专家 Agent
         3. 综合各专家的发现，得出最终诊断结论
         
-        可用的专家：
-        - analyze_logs: 日志分析专家
-        - analyze_metrics: 指标分析专家
-        - search_playbook: Playbook 检索专家
+        可用的专家工具：
+        - delegate_to_log_analysis: 日志分析专家
+        - delegate_to_metrics_analysis: 指标分析专家
+        - delegate_to_playbook: Playbook 检索专家
         
         工作流程：
         1. 首先理解告警内容
