@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
         <TargetFramework>net9.0</TargetFramework>
@@ -11,7 +11,14 @@
     </ItemGroup>
 
     <ItemGroup>
+      <PackageReference Include="AWSSDK.CloudWatchLogs" Version="3.7.*" />
+      <PackageReference Include="AWSSDK.SSO" Version="3.7.*" />
+      <PackageReference Include="AWSSDK.SSOOIDC" Version="3.7.*" />
+    </ItemGroup>
+
+    <ItemGroup>
       <EmbeddedResource Include="Tools\Todo\Prompts\*.txt" />
+      <EmbeddedResource Include="Tools\CloudWatch\Prompts\*.txt" />
     </ItemGroup>
 
 </Project>

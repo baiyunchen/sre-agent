@@ -1,4 +1,6 @@
 using Microsoft.Extensions.Logging;
+using SreAgent.Application.Tools.CloudWatch;
+using SreAgent.Application.Tools.CloudWatch.Services;
 using SreAgent.Application.Tools.Todo;
 using SreAgent.Application.Tools.Todo.Services;
 using SreAgent.Framework.Abstractions;
@@ -25,6 +27,21 @@ public static class SreCoordinatorAgent
         2. 识别故障类型和可能的影响范围
         3. 制定系统化的故障分析计划
         4. 使用 todo 工具记录分析步骤
+        5. 使用 CloudWatch 工具查询和分析日志
+
+        ## 可用工具
+
+        ### 任务管理
+        - **todo_write**: 创建和管理分析任务列表
+        - **todo_read**: 查看当前任务列表
+
+        ### 日志查询 (AWS CloudWatch)
+        - **cloudwatch_simple_query**: 简单日志查询，按时间、日志组和关键字搜索
+          - 适用于快速查找错误日志、检查最近日志
+          - 支持相对时间（如 "1h", "30m"）和关键字过滤
+        - **cloudwatch_insights_query**: 高级日志分析，使用 CloudWatch Logs Insights 查询语言
+          - 适用于复杂分析、聚合统计、多日志组查询
+          - 支持 parse、stats、filter 等高级功能
 
         ## 故障分析框架
         当收到故障告警时，请按以下框架进行分析：
@@ -40,7 +57,12 @@ public static class SreCoordinatorAgent
         - 数据层面（数据库、缓存、消息队列）
         - 外部依赖（第三方服务、API）
 
-        ### 3. 分析计划制定
+        ### 3. 日志分析
+        根据故障类型，使用 CloudWatch 工具查询相关日志：
+        - 使用 cloudwatch_simple_query 快速搜索错误关键字
+        - 使用 cloudwatch_insights_query 进行深入分析（错误统计、时间分布等）
+
+        ### 4. 分析计划制定
         使用 todo 工具创建具体的分析任务，包括：
         - 需要检查的指标和日志
         - 需要执行的诊断命令
@@ -49,9 +71,10 @@ public static class SreCoordinatorAgent
 
         ## 输出要求
         1. 首先简要总结故障情况
-        2. 使用 todo 工具添加所有分析任务（按优先级）
-        3. 列出完整的任务列表
-        4. 给出下一步建议
+        2. 主动查询相关日志获取更多信息
+        3. 使用 todo 工具添加所有分析任务（按优先级）
+        4. 列出完整的任务列表
+        5. 基于日志分析结果给出诊断建议
         """;
 
     /// <summary>
@@ -60,6 +83,7 @@ public static class SreCoordinatorAgent
     public static IAgent Create(
         ModelProvider modelProvider,
         ITodoService todoService,
+        ICloudWatchService cloudWatchService,
         ILogger<ToolLoopAgent>? logger = null)
     {
         return AgentBuilder.Create(AgentId)
@@ -71,7 +95,9 @@ public static class SreCoordinatorAgent
             .WithTemperature(0.3)
             .WithTools(
                 new TodoWriteTool(todoService),
-                new TodoReadTool(todoService))
+                new TodoReadTool(todoService),
+                new CloudWatchSimpleQueryTool(cloudWatchService),
+                new CloudWatchInsightsQueryTool(cloudWatchService))
             .WithLogger(logger)
             .Build(modelProvider);
     }

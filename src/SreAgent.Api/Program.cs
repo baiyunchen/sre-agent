@@ -1,5 +1,6 @@
 using Serilog;
 using SreAgent.Application.Agents;
+using SreAgent.Application.Tools.CloudWatch.Services;
 using SreAgent.Application.Tools.Todo.Services;
 using SreAgent.Framework.Abstractions;
 using SreAgent.Framework.Agents;
@@ -39,6 +40,23 @@ try
     builder.Services.AddSingleton<IContextStore, InMemoryContextStore>();
     builder.Services.AddSingleton<ITokenEstimator, SimpleTokenEstimator>();
 
+    // 注册 CloudWatch 服务
+    // 使用默认凭证链（支持 AWS SSO、环境变量、配置文件等）
+    builder.Services.AddSingleton<CloudWatchServiceOptions>(sp =>
+    {
+        var config = builder.Configuration.GetSection("AWS:CloudWatch");
+        return new CloudWatchServiceOptions
+        {
+            Region = config["Region"] ?? Environment.GetEnvironmentVariable("AWS_REGION") ?? "ap-northeast-1",
+            ServiceUrl = config["ServiceUrl"], // 可选，用于 LocalStack 等本地测试
+            ProfileName = config["ProfileName"]
+        };
+    });
+    builder.Services.AddSingleton<ICloudWatchService>(sp =>
+        new CloudWatchService(
+            sp.GetRequiredService<CloudWatchServiceOptions>(),
+            sp.GetRequiredService<ILogger<CloudWatchService>>()));
+
     // 注册 ContextManagerOptions（包含剪枝器配置）
     builder.Services.AddSingleton(_ => new ContextManagerOptions
     {
@@ -51,6 +69,7 @@ try
         SreCoordinatorAgent.Create(
             sp.GetRequiredService<ModelProvider>(),
             sp.GetRequiredService<ITodoService>(),
+            sp.GetRequiredService<ICloudWatchService>(),
             sp.GetRequiredService<ILogger<ToolLoopAgent>>()));
 
     var app = builder.Build();

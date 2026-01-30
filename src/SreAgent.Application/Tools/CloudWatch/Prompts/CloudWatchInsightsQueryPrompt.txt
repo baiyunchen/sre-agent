@@ -1,0 +1,158 @@
+Execute CloudWatch Logs Insights queries with full query language support.
+
+## Purpose
+Use this tool for advanced log analysis when you need:
+- Complex filtering and pattern matching
+- Aggregations and statistics
+- Parsing structured/unstructured logs
+- Querying multiple log groups simultaneously
+- Time-series analysis
+
+## Parameters
+
+### log_group_names (required)
+One or more log group names, separated by comma or newline.
+```
+/aws/lambda/service-a, /aws/lambda/service-b
+```
+
+### query_string (required)
+CloudWatch Logs Insights query. See syntax reference below.
+
+### start_time (optional)
+- **Relative**: `1h`, `30m`, `7d`, `2w`
+- **ISO 8601**: `2024-01-15T10:00:00Z`
+- Default: 1 hour ago
+
+### end_time (optional)
+- Default: Current time
+
+### limit (optional)
+- Default: 1000
+- Maximum: 10000
+
+## Query Language Reference
+
+### Basic Structure
+```
+fields @timestamp, @message
+| filter <condition>
+| sort @timestamp desc
+| limit 20
+```
+
+### Common Commands
+
+#### fields - Select fields to display
+```
+fields @timestamp, @message, @logStream
+```
+
+#### filter - Filter log events
+```
+filter @message like /ERROR/
+filter @message like /(?i)error/   # case-insensitive
+filter @message not like /DEBUG/
+filter ispresent(errorCode)
+```
+
+#### parse - Extract fields from messages
+```
+# Extract from pattern
+parse @message "[*] * - *" as level, class, message
+
+# Extract JSON fields (if not auto-parsed)
+parse @message '{"status":*}' as status
+```
+
+#### stats - Aggregations
+```
+# Count errors per 5 minutes
+stats count(*) as errorCount by bin(5m)
+
+# Average response time by endpoint
+stats avg(duration) as avgDuration, count(*) as requests by endpoint
+
+# Percentiles
+stats pct(responseTime, 50) as p50, pct(responseTime, 95) as p95, pct(responseTime, 99) as p99
+```
+
+#### sort - Order results
+```
+sort @timestamp desc
+sort errorCount desc
+```
+
+### Example Queries
+
+#### Find all errors
+```
+fields @timestamp, @message
+| filter @message like /ERROR/
+| sort @timestamp desc
+| limit 100
+```
+
+#### Error count over time
+```
+filter @message like /ERROR/
+| stats count(*) as errorCount by bin(5m)
+| sort @timestamp desc
+```
+
+#### Parse and analyze HTTP logs
+```
+parse @message '* - - [*] "* * *" * *' as ip, timestamp, method, path, protocol, status, size
+| filter status >= 500
+| stats count(*) as count by status, path
+| sort count desc
+```
+
+#### Analyze Lambda cold starts
+```
+filter @type = "REPORT"
+| parse @message "Duration: * ms" as duration
+| parse @message "Init Duration: * ms" as initDuration
+| filter ispresent(initDuration)
+| stats count(*) as coldStarts, avg(initDuration) as avgInitMs by bin(1h)
+```
+
+#### Find slow requests
+```
+filter @message like /duration/
+| parse @message "duration=*ms" as duration
+| filter duration > 1000
+| stats count(*) as slowRequests, avg(duration) as avgDuration by bin(10m)
+```
+
+#### Error patterns analysis
+```
+filter @message like /(?i)error|exception|failed/
+| parse @message "[*] *" as level, errorMessage
+| stats count(*) as count by errorMessage
+| sort count desc
+| limit 20
+```
+
+#### JSON log analysis
+```
+filter level = "ERROR"
+| stats count(*) as errors by service, errorType
+| sort errors desc
+```
+
+## Tips
+
+1. **Use filter early**: Place filters before stats for better performance
+2. **Limit time range**: Shorter ranges = faster queries
+3. **Use bin() for time series**: `bin(5m)`, `bin(1h)`, `bin(1d)`
+4. **Case-insensitive regex**: Use `(?i)` flag, e.g., `/(?i)error/`
+5. **Escape special chars**: Use `\` for special regex characters
+6. **ispresent()**: Check if a field exists before using it
+
+## Limitations
+
+- Query timeout: 15 minutes maximum
+- Results limited to 10,000 records (use stats for larger datasets)
+- Some regex features not supported
+- Cannot query across regions

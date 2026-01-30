@@ -1,0 +1,75 @@
+Search CloudWatch logs by time range, log group, and keyword filter.
+
+## Purpose
+Use this tool when you need to quickly search log messages in a CloudWatch log group without writing complex queries. This is ideal for:
+- Searching for error messages or specific keywords
+- Checking recent logs for a service
+- Quick troubleshooting during incidents
+
+## Parameters
+
+### log_group_name (required)
+The name of the CloudWatch log group to search. Common patterns:
+- Lambda: `/aws/lambda/<function-name>`
+- ECS: `/ecs/<cluster-name>/<service-name>`
+- API Gateway: `API-Gateway-Execution-Logs_<api-id>/<stage>`
+- Custom: Application-defined names
+
+### start_time (optional)
+When to start searching. Supports:
+- **Relative time**: `1h` (1 hour ago), `30m` (30 minutes), `7d` (7 days), `2w` (2 weeks)
+- **ISO 8601**: `2024-01-15T10:00:00Z`
+- Default: 1 hour ago
+
+### end_time (optional)
+When to stop searching. Supports ISO 8601 format.
+- Default: Current time (now)
+
+### filter_pattern (optional)
+Pattern to match in log messages. CloudWatch filter syntax:
+- **Simple keyword**: `ERROR` - matches logs containing "ERROR"
+- **Exact phrase**: `"Connection refused"` - matches exact phrase
+- **OR condition**: `?ERROR ?WARN` - matches ERROR or WARN
+- **Exclude**: `ERROR -DEBUG` - matches ERROR but not DEBUG
+- **Field filter**: `{ $.level = "ERROR" }` - for JSON logs
+
+### limit (optional)
+Maximum number of log events to return.
+- Default: 100
+- Maximum: 10000
+
+## Examples
+
+### Search for errors in the last hour
+```
+log_group_name: /aws/lambda/my-api
+filter_pattern: ERROR
+```
+
+### Search for specific error in last 30 minutes
+```
+log_group_name: /ecs/production/web-service
+start_time: 30m
+filter_pattern: "Connection timeout"
+```
+
+### Search for multiple error types
+```
+log_group_name: /aws/lambda/payment-service
+start_time: 2h
+filter_pattern: ?ERROR ?EXCEPTION ?FATAL
+limit: 200
+```
+
+## Best Practices
+
+1. **Start with recent logs**: Begin with a short time range (e.g., `1h`) and expand if needed
+2. **Use specific patterns**: More specific patterns return faster and more relevant results
+3. **Consider log volume**: High-volume log groups may need tighter time ranges
+4. **Check log group name**: Ensure the log group exists before querying
+
+## Limitations
+
+- Maximum 10,000 events per query
+- Cannot perform aggregations or complex analytics (use cloudwatch_insights_query for that)
+- Filter patterns have limited expressiveness compared to Insights queries
