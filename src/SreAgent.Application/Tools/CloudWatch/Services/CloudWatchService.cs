@@ -1,7 +1,6 @@
 using Amazon;
 using Amazon.CloudWatchLogs;
 using Amazon.CloudWatchLogs.Model;
-using Amazon.Runtime;
 using Microsoft.Extensions.Logging;
 
 namespace SreAgent.Application.Tools.CloudWatch.Services;
