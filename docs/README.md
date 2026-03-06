@@ -28,6 +28,7 @@ src/
 | 09 | [Slack集成与告警接入](./09-Slack集成与告警接入.md) | Slack App 配置、告警解析和交互 |
 | 10 | [知识库与RAG实现](./10-知识库与RAG实现.md) | 知识库架构、Confluence 同步和 RAG |
 | 11 | [项目实施计划](./11-项目实施计划.md) | 分期计划、里程碑和资源需求 |
+| 12 | [功能实现状态与长期开发计划](./12-功能实现状态与长期开发计划.md) | **长期文档**：当前实现总结、建议开发路线图 |
 
 ## 核心设计原则
 
@@ -127,7 +128,8 @@ public class TodoWriteTool : ToolBase<TodoWriteParams>
 **技术负责人/架构师**
 1. [项目概述与目标](./01-项目概述与目标.md)
 2. [技术架构设计](./03-技术架构设计.md) ⭐ 核心
-3. [项目实施计划](./11-项目实施计划.md)
+3. [功能实现状态与长期开发计划](./12-功能实现状态与长期开发计划.md) ⭐ 长期路线图
+4. [项目实施计划](./11-项目实施计划.md)
 
 **Agent Framework 开发**
 1. [技术架构设计](./03-技术架构设计.md) - 核心抽象、Hooks 系统
@@ -249,7 +251,7 @@ public record ToolResult
 
 | 模块 | 状态 | 说明 |
 |------|------|------|
-| 日志分析工具 | ⏳ | SumoLogic、CloudWatch Logs |
+| 日志分析工具 | ✅ 部分 | CloudWatch Logs 已实现，SumoLogic 待开发 |
 | 指标查询工具 | ⏳ | Prometheus、CloudWatch Metrics |
 | K8S 工具 | ⏳ | Kubernetes 资源查询 |
 | AWS 工具 | ⏳ | AWS 资源管理 |
