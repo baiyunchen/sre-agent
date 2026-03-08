@@ -1,6 +1,7 @@
 using Serilog;
 using SreAgent.Application.Agents;
 using SreAgent.Application.Tools.CloudWatch.Services;
+using SreAgent.Application.Tools.KnowledgeBase.Services;
 using SreAgent.Application.Tools.Todo.Services;
 using SreAgent.Framework.Abstractions;
 using SreAgent.Framework.Agents;
@@ -57,6 +58,30 @@ try
             sp.GetRequiredService<CloudWatchServiceOptions>(),
             sp.GetRequiredService<ILogger<CloudWatchService>>()));
 
+    // 注册 Knowledge Base 服务（可选，需要配置 KnowledgeBaseId）
+    var kbConfig = builder.Configuration.GetSection("AWS:KnowledgeBase");
+    var kbOptions = new KnowledgeBaseServiceOptions
+    {
+        Region = kbConfig["Region"] ?? Environment.GetEnvironmentVariable("AWS_REGION") ?? "ap-northeast-1",
+        ServiceUrl = kbConfig["ServiceUrl"],
+        KnowledgeBaseId = kbConfig["KnowledgeBaseId"] ?? Environment.GetEnvironmentVariable("AWS_KNOWLEDGE_BASE_ID"),
+        FoundationModelArn = kbConfig["FoundationModelArn"] ?? Environment.GetEnvironmentVariable("AWS_FOUNDATION_MODEL_ARN")
+    };
+    builder.Services.AddSingleton(kbOptions);
+    
+    // 只有配置了 KnowledgeBaseId 才注册服务
+    if (!string.IsNullOrWhiteSpace(kbOptions.KnowledgeBaseId))
+    {
+        builder.Services.AddSingleton<IKnowledgeBaseService>(sp =>
+            new KnowledgeBaseService(
+                sp.GetRequiredService<KnowledgeBaseServiceOptions>(),
+                sp.GetRequiredService<ILogger<KnowledgeBaseService>>()));
+    }
+    else
+    {
+        Log.Warning("Knowledge Base ID 未配置，Knowledge Base 功能将被禁用");
+    }
+
     // 注册 ContextManagerOptions（包含剪枝器配置）
     builder.Services.AddSingleton(_ => new ContextManagerOptions
     {
@@ -70,6 +95,7 @@ try
             sp.GetRequiredService<ModelProvider>(),
             sp.GetRequiredService<ITodoService>(),
             sp.GetRequiredService<ICloudWatchService>(),
+            sp.GetService<IKnowledgeBaseService>(), // 可选，可能为 null
             sp.GetRequiredService<ILogger<ToolLoopAgent>>()));
 
     var app = builder.Build();

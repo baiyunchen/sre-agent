@@ -1,0 +1,26 @@
+Search the SRE Knowledge Base for playbooks and troubleshooting guides related to alerts.
+
+Use this tool when:
+1. You receive an alert and need to find the corresponding playbook
+2. You need troubleshooting steps for a specific service or error type
+3. You want to find standard operating procedures (SOPs) for incident response
+
+The Knowledge Base contains:
+- Alert playbooks with step-by-step troubleshooting guides
+- Service-specific documentation (order-service, inventory-service, notification-service)
+- Common error patterns and their solutions
+- CloudWatch log query examples
+- AWS CLI commands for diagnostics
+
+Query tips:
+- Include the service name in your query (e.g., "order-service 5xx errors")
+- Include the alert name if available (e.g., "order-service-5xx-errors-dev")
+- Be specific about the error type (e.g., "inventory check failed", "DLQ messages")
+- Include error codes or patterns when relevant
+
+The tool will return relevant playbook sections with:
+- Troubleshooting steps
+- CloudWatch log queries
+- AWS CLI commands for diagnosis
+- Root cause analysis guidance
+- Resolution steps

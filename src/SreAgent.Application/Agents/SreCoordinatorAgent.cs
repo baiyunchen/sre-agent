@@ -1,6 +1,8 @@
 using Microsoft.Extensions.Logging;
 using SreAgent.Application.Tools.CloudWatch;
 using SreAgent.Application.Tools.CloudWatch.Services;
+using SreAgent.Application.Tools.KnowledgeBase;
+using SreAgent.Application.Tools.KnowledgeBase.Services;
 using SreAgent.Application.Tools.Todo;
 using SreAgent.Application.Tools.Todo.Services;
 using SreAgent.Framework.Abstractions;
@@ -24,12 +26,19 @@ public static class SreCoordinatorAgent
 
         ## 你的职责
         1. 接收和分析线上故障告警信息
-        2. 识别故障类型和可能的影响范围
-        3. 制定系统化的故障分析计划
-        4. 使用 todo 工具记录分析步骤
-        5. 使用 CloudWatch 工具查询和分析日志
+        2. **首先查询 Knowledge Base 获取相关的 Playbook**
+        3. 识别故障类型和可能的影响范围
+        4. 制定系统化的故障分析计划
+        5. 使用 todo 工具记录分析步骤
+        6. 使用 CloudWatch 工具查询和分析日志
 
         ## 可用工具
+
+        ### 知识库查询 (首选)
+        - **knowledge_base_query**: 查询 SRE Playbook 知识库
+          - **收到告警时首先使用此工具**查找相关的 Playbook
+          - 包含各服务的故障排查指南、CloudWatch 查询示例、常见问题解决方案
+          - 查询时包含服务名称、告警名称或错误类型以获得最佳结果
 
         ### 任务管理
         - **todo_write**: 创建和管理分析任务列表
@@ -46,35 +55,43 @@ public static class SreCoordinatorAgent
         ## 故障分析框架
         当收到故障告警时，请按以下框架进行分析：
 
-        ### 1. 故障识别
+        ### 1. 查询 Playbook（首要步骤）
+        - 使用 knowledge_base_query 工具查询与告警相关的 Playbook
+        - 根据告警名称、服务名称或错误类型进行查询
+        - Playbook 包含详细的排查步骤和解决方案
+
+        ### 2. 故障识别
         - 故障类型（服务不可用、性能下降、数据异常、安全事件等）
         - 影响范围（用户量、业务线、地域等）
         - 紧急程度（P0-P3）
 
-        ### 2. 初步诊断方向
+        ### 3. 初步诊断方向
         - 基础设施层面（网络、DNS、负载均衡、CDN）
         - 应用层面（服务状态、错误率、响应时间）
         - 数据层面（数据库、缓存、消息队列）
         - 外部依赖（第三方服务、API）
 
-        ### 3. 日志分析
-        根据故障类型，使用 CloudWatch 工具查询相关日志：
+        ### 4. 日志分析
+        根据 Playbook 指导和故障类型，使用 CloudWatch 工具查询相关日志：
         - 使用 cloudwatch_simple_query 快速搜索错误关键字
         - 使用 cloudwatch_insights_query 进行深入分析（错误统计、时间分布等）
+        - 参考 Playbook 中的日志查询示例
 
-        ### 4. 分析计划制定
+        ### 5. 分析计划制定
         使用 todo 工具创建具体的分析任务，包括：
+        - Playbook 中建议的排查步骤
         - 需要检查的指标和日志
         - 需要执行的诊断命令
         - 需要联系的相关团队
         - 预期的排查顺序
 
         ## 输出要求
-        1. 首先简要总结故障情况
-        2. 主动查询相关日志获取更多信息
-        3. 使用 todo 工具添加所有分析任务（按优先级）
-        4. 列出完整的任务列表
-        5. 基于日志分析结果给出诊断建议
+        1. **首先查询 Knowledge Base** 获取相关 Playbook
+        2. 总结故障情况和 Playbook 建议
+        3. 根据 Playbook 指导查询相关日志
+        4. 使用 todo 工具添加所有分析任务（按优先级）
+        5. 列出完整的任务列表
+        6. 基于 Playbook 和日志分析结果给出诊断建议
         """;
 
     /// <summary>
@@ -84,8 +101,23 @@ public static class SreCoordinatorAgent
         ModelProvider modelProvider,
         ITodoService todoService,
         ICloudWatchService cloudWatchService,
+        IKnowledgeBaseService? knowledgeBaseService = null,
         ILogger<ToolLoopAgent>? logger = null)
     {
+        var tools = new List<ITool>
+        {
+            new TodoWriteTool(todoService),
+            new TodoReadTool(todoService),
+            new CloudWatchSimpleQueryTool(cloudWatchService),
+            new CloudWatchInsightsQueryTool(cloudWatchService)
+        };
+
+        // 如果配置了 Knowledge Base 服务，则添加 Knowledge Base 查询工具
+        if (knowledgeBaseService != null)
+        {
+            tools.Insert(0, new KnowledgeBaseQueryTool(knowledgeBaseService));
+        }
+
         return AgentBuilder.Create(AgentId)
             .WithName(AgentName)
             .WithDescription(AgentDescription)
@@ -93,11 +125,7 @@ public static class SreCoordinatorAgent
             .WithModelCapability(ModelCapability.Medium)
             .WithMaxIterations(15)
             .WithTemperature(0.3)
-            .WithTools(
-                new TodoWriteTool(todoService),
-                new TodoReadTool(todoService),
-                new CloudWatchSimpleQueryTool(cloudWatchService),
-                new CloudWatchInsightsQueryTool(cloudWatchService))
+            .WithTools(tools.ToArray())
             .WithLogger(logger)
             .Build(modelProvider);
     }

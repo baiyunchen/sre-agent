@@ -11,6 +11,7 @@
     </ItemGroup>
 
     <ItemGroup>
+      <PackageReference Include="AWSSDK.BedrockAgentRuntime" Version="3.7.*" />
       <PackageReference Include="AWSSDK.CloudWatchLogs" Version="3.7.*" />
       <PackageReference Include="AWSSDK.SSO" Version="3.7.*" />
       <PackageReference Include="AWSSDK.SSOOIDC" Version="3.7.*" />
@@ -19,6 +20,7 @@
     <ItemGroup>
       <EmbeddedResource Include="Tools\Todo\Prompts\*.txt" />
       <EmbeddedResource Include="Tools\CloudWatch\Prompts\*.txt" />
+      <EmbeddedResource Include="Tools\KnowledgeBase\Prompts\*.txt" />
     </ItemGroup>
 
 </Project>
