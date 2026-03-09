@@ -7,7 +7,12 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <InternalsVisibleTo Include="SreAgent.Application.Tests" />
+    </ItemGroup>
+
+    <ItemGroup>
       <ProjectReference Include="..\SreAgent.Framework\SreAgent.Framework.csproj" />
+      <ProjectReference Include="..\SreAgent.Repository\SreAgent.Repository.csproj" />
     </ItemGroup>
 
     <ItemGroup>

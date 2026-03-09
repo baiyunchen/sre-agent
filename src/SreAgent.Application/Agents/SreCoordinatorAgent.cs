@@ -1,6 +1,8 @@
 using Microsoft.Extensions.Logging;
+using SreAgent.Application.Services;
 using SreAgent.Application.Tools.CloudWatch;
 using SreAgent.Application.Tools.CloudWatch.Services;
+using SreAgent.Application.Tools.DiagnosticData;
 using SreAgent.Application.Tools.KnowledgeBase;
 using SreAgent.Application.Tools.KnowledgeBase.Services;
 using SreAgent.Application.Tools.Todo;
@@ -8,6 +10,7 @@ using SreAgent.Application.Tools.Todo.Services;
 using SreAgent.Framework.Abstractions;
 using SreAgent.Framework.Agents;
 using SreAgent.Framework.Providers;
+using SreAgent.Repository;
 
 namespace SreAgent.Application.Agents;
 
@@ -49,9 +52,15 @@ public static class SreCoordinatorAgent
         - **cloudwatch_simple_query**: 简单日志查询，按时间、日志组和关键字搜索
           - 适用于快速查找错误日志、检查最近日志
           - 支持相对时间（如 "1h", "30m"）和关键字过滤
+          - 大量结果会自动存入诊断数据库，只返回摘要
         - **cloudwatch_insights_query**: 高级日志分析，使用 CloudWatch Logs Insights 查询语言
           - 适用于复杂分析、聚合统计、多日志组查询
           - 支持 parse、stats、filter 等高级功能
+
+        ### 诊断数据查询（从数据库中检索之前存储的大量日志/指标）
+        - **search_diagnostic_data**: 按关键字、严重级别、来源、时间范围搜索已存储的诊断数据
+        - **query_diagnostic_data**: 对诊断数据执行受限 SQL 查询（仅 SELECT，自动注入 session_id）
+        - **get_diagnostic_summary**: 获取当前会话的诊断数据汇总统计
 
         ## 故障分析框架
         当收到故障告警时，请按以下框架进行分析：
@@ -103,6 +112,8 @@ public static class SreCoordinatorAgent
         ITodoService todoService,
         ICloudWatchService cloudWatchService,
         IKnowledgeBaseService? knowledgeBaseService = null,
+        IDiagnosticDataService? diagnosticDataService = null,
+        AppDbContext? dbContext = null,
         ILogger<ToolLoopAgent>? logger = null)
     {
         var tools = new List<ITool>
@@ -117,6 +128,17 @@ public static class SreCoordinatorAgent
         if (knowledgeBaseService != null)
         {
             tools.Insert(0, new KnowledgeBaseQueryTool(knowledgeBaseService));
+        }
+
+        // 如果配置了诊断数据服务，则添加诊断数据查询工具
+        if (diagnosticDataService != null)
+        {
+            tools.Add(new SearchDiagnosticDataTool(diagnosticDataService));
+            tools.Add(new GetDiagnosticSummaryTool(diagnosticDataService));
+        }
+        if (dbContext != null)
+        {
+            tools.Add(new QueryDiagnosticDataTool(dbContext));
         }
 
         return AgentBuilder.Create(AgentId)

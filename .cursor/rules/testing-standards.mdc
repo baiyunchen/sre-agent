@@ -1,0 +1,101 @@
+---
+description: Testing standards and conventions for the sre-agent project
+globs: "**/*Tests*/**/*.cs"
+alwaysApply: false
+---
+
+# Testing Standards
+
+## Tech Stack
+
+- **Framework**: xUnit 2.9+
+- **Mocking**: Moq 4.20+
+- **Assertions**: FluentAssertions 7.0+
+- **Integration DB**: Testcontainers for PostgreSQL
+- **API Tests**: WebApplicationFactory (Microsoft.AspNetCore.Mvc.Testing)
+
+## Naming Conventions
+
+- Test class: `{ClassUnderTest}Tests`
+- Test method: `{Method}_{Scenario}_Should{ExpectedBehavior}`
+
+```csharp
+// Example
+public class SessionRepositoryTests
+{
+    [Fact]
+    public async Task GetAsync_WithExistingSession_ShouldReturnSession() { }
+
+    [Fact]
+    public async Task GetAsync_WithNonExistentId_ShouldReturnNull() { }
+}
+```
+
+## Test Structure
+
+- Follow Arrange-Act-Assert (AAA) pattern
+- Use `#region` to group related tests within a class
+- Use constructor for shared setup; implement `IAsyncLifetime` for async setup/teardown
+- One assertion concept per test (multiple FluentAssertions on the same object is OK)
+
+## Test Types by Layer
+
+### Unit Tests (SreAgent.Framework.Tests, SreAgent.Application.Tests)
+
+- Mock all external dependencies with Moq
+- No database or network calls
+- Test a single class/method in isolation
+
+### Integration Tests (SreAgent.Repository.Tests -- new project)
+
+- Use Testcontainers to spin up a real PostgreSQL instance
+- Share a single container per test class via `IClassFixture`
+- Each test should clean up its own data or use transactions
+
+```csharp
+public class RepositoryTestFixture : IAsyncLifetime
+{
+    public PostgreSqlContainer Container { get; } = new PostgreSqlBuilder()
+        .WithImage("postgres:15")
+        .Build();
+
+    public AppDbContext CreateContext() =>
+        new(new DbContextOptionsBuilder<AppDbContext>()
+            .UseNpgsql(Container.GetConnectionString())
+            .Options);
+
+    public async Task InitializeAsync()
+    {
+        await Container.StartAsync();
+        var ctx = CreateContext();
+        await ctx.Database.MigrateAsync();
+    }
+
+    public async Task DisposeAsync() => await Container.DisposeAsync();
+}
+```
+
+### E2E Tests
+
+- Run via the e2e-test subagent after each implementation phase
+- Require Docker Compose (PostgreSQL) + API service running
+- Verify end-to-end flows: HTTP request -> API -> Service -> Repository -> PostgreSQL
+- Check database state after API calls to confirm persistence
+
+## Phase Gate Rule
+
+Each implementation phase MUST pass all three test levels before proceeding:
+
+1. Unit tests pass: `dotnet test` for the relevant test projects
+2. Integration tests pass: Testcontainers-based repository/service tests
+3. E2E verification: Start services, call APIs, verify database state
+
+## SQL Safety Test Requirements
+
+For any tool that executes user/agent-provided SQL (e.g., `QueryDiagnosticDataTool`):
+
+- Must reject DML statements (INSERT, UPDATE, DELETE, DROP, ALTER, TRUNCATE)
+- Must enforce automatic `WHERE session_id = ?` injection
+- Must enforce `LIMIT` cap (default 200)
+- Must only allow queries against whitelisted tables
+- All of the above must have dedicated unit tests

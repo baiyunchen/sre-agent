@@ -1,5 +1,7 @@
+using Microsoft.EntityFrameworkCore;
 using Serilog;
 using SreAgent.Application.Agents;
+using SreAgent.Application.Services;
 using SreAgent.Application.Tools.CloudWatch.Services;
 using SreAgent.Application.Tools.KnowledgeBase.Services;
 using SreAgent.Application.Tools.Todo.Services;
@@ -8,6 +10,8 @@ using SreAgent.Framework.Agents;
 using SreAgent.Framework.Contexts;
 using SreAgent.Framework.Contexts.Trimmers;
 using SreAgent.Framework.Providers;
+using SreAgent.Infrastructure.Persistence;
+using SreAgent.Repository;
 
 // 配置 Serilog
 Log.Logger = new LoggerConfiguration()
@@ -35,10 +39,15 @@ try
     builder.Services.AddControllers();
     builder.Services.AddOpenApi();
 
+    // 注册持久化服务
+    var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
+        ?? "Host=localhost;Port=5432;Database=sre_agent;Username=sre_agent;Password=sre_agent";
+    builder.Services.AddPersistence(connectionString);
+
     // 注册基础服务
     builder.Services.AddSingleton<ITodoService, TodoService>();
     builder.Services.AddSingleton(_ => ModelProvider.AliyunBailian());
-    builder.Services.AddSingleton<IContextStore, InMemoryContextStore>();
+    // IContextStore is registered via AddPersistence() above (PostgresContextStore)
     builder.Services.AddSingleton<ITokenEstimator, SimpleTokenEstimator>();
 
     // 注册 CloudWatch 服务
@@ -89,16 +98,33 @@ try
         TrimTargetRatio = 0.8
     });
 
-    // 注册 Agent（单例，无状态可复用）
-    builder.Services.AddSingleton<IAgent>(sp =>
+    // 注册 Agent（scoped，因为诊断工具依赖 scoped 的 DbContext 和 Service）
+    builder.Services.AddScoped<IAgent>(sp =>
         SreCoordinatorAgent.Create(
             sp.GetRequiredService<ModelProvider>(),
             sp.GetRequiredService<ITodoService>(),
             sp.GetRequiredService<ICloudWatchService>(),
-            sp.GetService<IKnowledgeBaseService>(), // 可选，可能为 null
+            sp.GetService<IKnowledgeBaseService>(),
+            sp.GetService<IDiagnosticDataService>(),
+            sp.GetService<AppDbContext>(),
             sp.GetRequiredService<ILogger<ToolLoopAgent>>()));
 
     var app = builder.Build();
+
+    // 自动应用数据库迁移
+    using (var scope = app.Services.CreateScope())
+    {
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        try
+        {
+            await dbContext.Database.MigrateAsync();
+            Log.Information("Database migration applied successfully");
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Database migration failed - database may not be available");
+        }
+    }
 
     // 启用 Serilog HTTP 请求日志
     app.UseSerilogRequestLogging(options =>

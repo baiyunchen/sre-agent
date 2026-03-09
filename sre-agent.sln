@@ -16,7 +16,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SreAgent.Application", "src
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SreAgent.Repository", "src\SreAgent.Repository\SreAgent.Repository.csproj", "{162E06FD-0053-85B0-42D6-E6A8DBDEDA83}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SreAgent.Infrastrcture", "src\SreAgent.Infrastrcture\SreAgent.Infrastrcture.csproj", "{15F6C616-066B-184C-3BB1-DB031D3B17AC}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SreAgent.Infrastructure", "src\SreAgent.Infrastructure\SreAgent.Infrastructure.csproj", "{15F6C616-066B-184C-3BB1-DB031D3B17AC}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SreAgent.Framework", "src\SreAgent.Framework\SreAgent.Framework.csproj", "{880C3CF9-D58A-E594-653B-21C92A5472D6}"
 EndProject
