@@ -85,6 +85,11 @@ public record AnalyzeRequest
 public record AnalyzeResponse
 {
     /// <summary>
+    /// 会话 ID（用于后续查询或追问）
+    /// </summary>
+    public Guid SessionId { get; init; }
+
+    /// <summary>
     /// 是否成功
     /// </summary>
     public bool Success { get; init; }

@@ -94,11 +94,15 @@ public class SreController : ControllerBase
 
         var result = await _agent.ExecuteAsync(context, cancellationToken: ct);
 
+        // 持久化上下文（会话 + 消息）
+        await _contextStore.SaveAsync(result.Context.ExportSnapshot(context.SessionId), ct);
+
         // 获取生成的 Todo 列表
         var todos = await _todoService.GetAsync(context.SessionId);
 
         return Ok(new AnalyzeResponse
         {
+            SessionId = context.SessionId,
             Success = result.IsSuccess,
             Analysis = result.Output,
             Error = result.Error?.Message,
