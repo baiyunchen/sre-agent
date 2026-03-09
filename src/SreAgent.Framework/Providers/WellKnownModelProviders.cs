@@ -19,26 +19,19 @@ public static class WellKnownModelProviders
         ApiKeyEnvironmentVariable = "DASHSCOPE_API_KEY",
         Models = new Dictionary<ModelCapability, string>
         {
-            [ModelCapability.Large] = "qwen-max",
-            [ModelCapability.Medium] = "qwen-plus",
+            [ModelCapability.Large] = "qwen3.5-plus",
+            [ModelCapability.Medium] = "qwen3.5-plus",
             [ModelCapability.Small] = "qwen-turbo",
-            [ModelCapability.Reasoning] = "qwq-plus",
-            [ModelCapability.Coding] = "qwen-coder-plus"
+            [ModelCapability.Reasoning] = "qwen3.5-plus",
+            [ModelCapability.Coding] = "qwen3.5-plus"
         },
         Pricing = new Dictionary<string, ModelPricing>
         {
-            ["qwen-max"] = new()
+            ["qwen3.5-plus"] = new()
             {
-                ModelName = "qwen-max",
-                InputPricePerMillion = 20m,
-                OutputPricePerMillion = 60m,
-                CachedInputPricePerMillion = 2m
-            },
-            ["qwen-plus"] = new()
-            {
-                ModelName = "qwen-plus",
+                ModelName = "qwen3.5-plus",
                 InputPricePerMillion = 0.8m,
-                OutputPricePerMillion = 2m,
+                OutputPricePerMillion = 4.8m,
                 CachedInputPricePerMillion = 0.08m
             },
             ["qwen-turbo"] = new()
@@ -47,20 +40,6 @@ public static class WellKnownModelProviders
                 InputPricePerMillion = 0.3m,
                 OutputPricePerMillion = 0.6m,
                 CachedInputPricePerMillion = 0.03m
-            },
-            ["qwq-plus"] = new()
-            {
-                ModelName = "qwq-plus",
-                InputPricePerMillion = 0.8m,
-                OutputPricePerMillion = 2m,
-                CachedInputPricePerMillion = 0.08m
-            },
-            ["qwen-coder-plus"] = new()
-            {
-                ModelName = "qwen-coder-plus",
-                InputPricePerMillion = 0.8m,
-                OutputPricePerMillion = 2m,
-                CachedInputPricePerMillion = 0.08m
             }
         }
     };
