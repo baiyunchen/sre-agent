@@ -3,7 +3,7 @@
     <Project Path="src/SreAgent.Api/SreAgent.Api.csproj" />
     <Project Path="src/SreAgent.Application/SreAgent.Application.csproj" />
     <Project Path="src/SreAgent.Framework/SreAgent.Framework.csproj" />
-    <Project Path="src/SreAgent.Infrastrcture/SreAgent.Infrastrcture.csproj" />
+    <Project Path="src/SreAgent.Infrastructure/SreAgent.Infrastructure.csproj" />
     <Project Path="src/SreAgent.Repository/SreAgent.Repository.csproj" />
   </Folder>
   <Folder Name="/tests/">
