@@ -24,14 +24,6 @@ public class ToolExecutor
     /// <summary>
     /// 执行工具调用列表
     /// </summary>
-    /// <param name="sessionId">会话 ID</param>
-    /// <param name="agentId">Agent ID</param>
-    /// <param name="toolCalls">工具调用列表</param>
-    /// <param name="tools">可用的工具列表</param>
-    /// <param name="variables">共享变量</param>
-    /// <param name="cancellationToken">取消令牌</param>
-    /// <param name="parentContext">父 Agent 的上下文（用于子 Agent 继承）</param>
-    /// <returns>工具执行结果列表</returns>
     public async Task<List<(string CallId, string ToolName, ToolResult Result)>> ExecuteAsync(
         Guid sessionId,
         string agentId,
@@ -39,9 +31,13 @@ public class ToolExecutor
         IReadOnlyList<ITool> tools,
         IReadOnlyDictionary<string, object> variables,
         CancellationToken cancellationToken = default,
-        IContextManager? parentContext = null)
+        IContextManager? parentContext = null,
+        Guid? agentRunId = null)
     {
         var results = new List<(string, string, ToolResult)>();
+        var tracker = variables.TryGetValue(IExecutionTracker.VariableKey, out var t)
+            ? t as IExecutionTracker
+            : null;
 
         foreach (var toolCall in toolCalls)
         {
@@ -50,22 +46,37 @@ public class ToolExecutor
             ToolResult result;
             if (tool == null)
             {
-                // 工具不存在，返回错误结果
                 result = ToolResult.Failure(
                     $"工具 '{toolCall.Name}' 不存在。可用的工具: {string.Join(", ", tools.Select(t => t.Name))}",
                     "TOOL_NOT_FOUND");
             }
             else
             {
-                // 执行工具
+                Guid? invocationId = null;
+                var rawArgs = toolCall.Arguments is not null
+                    ? JsonSerializer.Serialize(toolCall.Arguments)
+                    : null;
+
+                if (tracker != null && agentRunId.HasValue)
+                {
+                    try { invocationId = await tracker.OnToolStartAsync(agentRunId.Value, toolCall.Name, rawArgs, cancellationToken); }
+                    catch (Exception ex) { _logger.LogWarning(ex, "Failed to track tool start for {ToolName}", toolCall.Name); }
+                }
+
                 result = await ExecuteSingleToolAsync(
-                    sessionId,
-                    agentId,
-                    tool,
-                    toolCall,
-                    variables,
-                    parentContext,
-                    cancellationToken);
+                    sessionId, agentId, tool, toolCall, variables, parentContext, cancellationToken);
+
+                if (tracker != null && invocationId.HasValue)
+                {
+                    try
+                    {
+                        await tracker.OnToolCompleteAsync(
+                            invocationId.Value, result.IsSuccess, result.Content,
+                            result.IsSuccess ? null : result.ErrorCode,
+                            (long)result.Duration.TotalMilliseconds, cancellationToken);
+                    }
+                    catch (Exception ex) { _logger.LogWarning(ex, "Failed to track tool completion for {ToolName}", toolCall.Name); }
+                }
             }
 
             results.Add((toolCall.CallId ?? Guid.NewGuid().ToString(), toolCall.Name, result));

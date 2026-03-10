@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
 using System.Text;
+using SreAgent.Application.Services;
 using SreAgent.Application.Tools.CloudWatch.Services;
 using SreAgent.Framework.Abstractions;
 using SreAgent.Framework.Contexts;
@@ -20,10 +21,13 @@ public class CloudWatchInsightsQueryTool : ToolBase<CloudWatchInsightsQueryParam
         "Execute CloudWatch Logs Insights queries with full query language support.");
 
     private readonly ICloudWatchService _cloudWatchService;
+    private readonly IDiagnosticDataService? _diagnosticDataService;
+    private const int DiagnosticStoreThreshold = 20;
 
-    public CloudWatchInsightsQueryTool(ICloudWatchService cloudWatchService)
+    public CloudWatchInsightsQueryTool(ICloudWatchService cloudWatchService, IDiagnosticDataService? diagnosticDataService = null)
     {
         _cloudWatchService = cloudWatchService;
+        _diagnosticDataService = diagnosticDataService;
     }
 
     public override string Name => "cloudwatch_insights_query";
@@ -84,6 +88,15 @@ public class CloudWatchInsightsQueryTool : ToolBase<CloudWatchInsightsQueryParam
                 });
         }
 
+        if (_diagnosticDataService != null && result.Events.Count > DiagnosticStoreThreshold)
+        {
+            var stored = await StoreDiagnosticDataAsync(
+                context.SessionId, string.Join(",", logGroups), result.Events, cancellationToken);
+            return ToolResult.Success(
+                FormatSummaryWithStorageNote(result, parameters, logGroups, startTime, endTime, stored),
+                new { count = result.Events.Count, storedToDiagnostics = stored, statistics = result.Statistics });
+        }
+
         return ToolResult.Success(
             FormatResults(result, parameters, logGroups, startTime, endTime),
             new
@@ -105,6 +118,61 @@ public class CloudWatchInsightsQueryTool : ToolBase<CloudWatchInsightsQueryParam
                     }
                     : null
             });
+    }
+
+    private async Task<int> StoreDiagnosticDataAsync(
+        Guid sessionId, string logGroupName, IReadOnlyList<LogEvent> events, CancellationToken ct)
+    {
+        var records = events.Select(e => new DiagnosticDataInput
+        {
+            SourceType = "cloudwatch_insights",
+            SourceName = logGroupName,
+            LogTimestamp = e.Timestamp,
+            Content = e.Message,
+            StructuredFields = e.Fields?.ToDictionary(kv => kv.Key, kv => (object)kv.Value),
+            Severity = InferSeverity(e.Message)
+        });
+        return await _diagnosticDataService!.StoreBatchAsync(sessionId, records, ct);
+    }
+
+    private static string FormatSummaryWithStorageNote(
+        CloudWatchQueryResult result,
+        CloudWatchInsightsQueryParams parameters,
+        List<string> logGroups,
+        DateTime startTime, DateTime endTime, int storedCount)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("📊 CloudWatch Logs Insights 查询结果");
+        sb.AppendLine("─".PadRight(60, '─'));
+        sb.AppendLine($"日志组: {string.Join(", ", logGroups)}");
+        sb.AppendLine($"时间范围: {startTime:yyyy-MM-dd HH:mm:ss} UTC - {endTime:yyyy-MM-dd HH:mm:ss} UTC");
+        sb.AppendLine($"查询语句: {parameters.QueryString}");
+        if (result.Statistics != null)
+        {
+            sb.AppendLine($"扫描记录数: {result.Statistics.RecordsScanned:N0}");
+            sb.AppendLine($"匹配记录数: {result.Statistics.RecordsMatched:N0}");
+        }
+        sb.AppendLine($"总记录数: {result.Events.Count}");
+        sb.AppendLine($"💾 已将 {storedCount} 条记录存入诊断数据库，可使用 search_diagnostic_data 或 query_diagnostic_data 工具检索。");
+        sb.AppendLine();
+        sb.AppendLine("前 5 条记录预览:");
+        foreach (var evt in result.Events.Take(5))
+            sb.AppendLine($"[{evt.Timestamp:yyyy-MM-dd HH:mm:ss.fff}] {evt.Message}");
+        if (result.Events.Count > 5)
+            sb.AppendLine($"... 还有 {result.Events.Count - 5} 条记录，请使用诊断数据查询工具获取。");
+        return sb.ToString();
+    }
+
+    private static string? InferSeverity(string message)
+    {
+        var upper = message.ToUpperInvariant();
+        if (upper.Contains("ERROR") || upper.Contains("FATAL") || upper.Contains("CRITICAL"))
+            return "ERROR";
+        if (upper.Contains("WARN"))
+            return "WARNING";
+        if (upper.Contains("DEBUG") || upper.Contains("TRACE"))
+            return "DEBUG";
+        return "INFO";
     }
 
     private static List<string> ParseLogGroups(string logGroupNames)

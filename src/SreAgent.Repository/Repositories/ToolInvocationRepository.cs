@@ -7,6 +7,7 @@ public interface IToolInvocationRepository
 {
     Task<ToolInvocationEntity> CreateAsync(ToolInvocationEntity invocation, CancellationToken ct = default);
     Task UpdateAsync(ToolInvocationEntity invocation, CancellationToken ct = default);
+    Task<ToolInvocationEntity?> GetByIdAsync(Guid id, CancellationToken ct = default);
     Task<IReadOnlyList<ToolInvocationEntity>> GetByAgentRunAsync(Guid agentRunId, CancellationToken ct = default);
 }
 
@@ -30,6 +31,11 @@ public class ToolInvocationRepository : IToolInvocationRepository
     {
         _context.ToolInvocations.Update(invocation);
         await _context.SaveChangesAsync(ct);
+    }
+
+    public async Task<ToolInvocationEntity?> GetByIdAsync(Guid id, CancellationToken ct = default)
+    {
+        return await _context.ToolInvocations.FirstOrDefaultAsync(i => i.Id == id, ct);
     }
 
     public async Task<IReadOnlyList<ToolInvocationEntity>> GetByAgentRunAsync(Guid agentRunId, CancellationToken ct = default)

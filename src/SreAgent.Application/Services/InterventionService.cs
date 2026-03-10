@@ -1,4 +1,6 @@
 using System.Text.Json;
+using SreAgent.Framework.Abstractions;
+using SreAgent.Framework.Contexts;
 using SreAgent.Repository.Entities;
 using SreAgent.Repository.Repositories;
 
@@ -16,13 +18,25 @@ public class InterventionService : IInterventionService
 {
     private readonly ISessionRepository _sessionRepository;
     private readonly IInterventionRepository _interventionRepository;
+    private readonly ICheckpointService _checkpointService;
+    private readonly IContextStore _contextStore;
+    private readonly ITokenEstimator _tokenEstimator;
+    private readonly IAuditService _auditService;
 
     public InterventionService(
         ISessionRepository sessionRepository,
-        IInterventionRepository interventionRepository)
+        IInterventionRepository interventionRepository,
+        ICheckpointService checkpointService,
+        IContextStore contextStore,
+        ITokenEstimator tokenEstimator,
+        IAuditService auditService)
     {
         _sessionRepository = sessionRepository;
         _interventionRepository = interventionRepository;
+        _checkpointService = checkpointService;
+        _contextStore = contextStore;
+        _tokenEstimator = tokenEstimator;
+        _auditService = auditService;
     }
 
     public async Task InterruptSessionAsync(Guid sessionId, string reason, string userId, CancellationToken ct = default)
@@ -45,6 +59,12 @@ public class InterventionService : IInterventionService
             IntervenedBy = userId,
             IntervenedAt = DateTime.UtcNow
         }, ct);
+
+        await TryCreateCheckpointAsync(sessionId, "interrupt", ct);
+
+        await _auditService.LogAsync(sessionId, "SessionInterrupted",
+            $"Session interrupted by {userId}: {reason}",
+            new { reason }, userId, null, ct);
     }
 
     public async Task CancelSessionAsync(Guid sessionId, string reason, string userId, CancellationToken ct = default)
@@ -64,6 +84,10 @@ public class InterventionService : IInterventionService
             IntervenedBy = userId,
             IntervenedAt = DateTime.UtcNow
         }, ct);
+
+        await _auditService.LogAsync(sessionId, "SessionCancelled",
+            $"Session cancelled by {userId}: {reason}",
+            new { reason }, userId, null, ct);
     }
 
     public async Task ProvideInputAsync(Guid sessionId, JsonDocument input, string userId, CancellationToken ct = default)
@@ -80,10 +104,30 @@ public class InterventionService : IInterventionService
             IntervenedBy = userId,
             IntervenedAt = DateTime.UtcNow
         }, ct);
+
+        await _auditService.LogAsync(sessionId, "InputProvided",
+            $"Input provided by {userId}",
+            null, userId, null, ct);
     }
 
     public async Task<IReadOnlyList<InterventionEntity>> GetBySessionAsync(Guid sessionId, CancellationToken ct = default)
     {
         return await _interventionRepository.GetBySessionAsync(sessionId, ct);
+    }
+
+    private async Task TryCreateCheckpointAsync(Guid sessionId, string name, CancellationToken ct)
+    {
+        try
+        {
+            var snapshot = await _contextStore.GetAsync(sessionId, ct);
+            if (snapshot == null) return;
+
+            var context = DefaultContextManager.FromSnapshot(snapshot, _tokenEstimator);
+            await _checkpointService.CreateCheckpointAsync(sessionId, context, name, ct);
+        }
+        catch
+        {
+            // Best effort - don't fail the interrupt if checkpoint creation fails
+        }
     }
 }

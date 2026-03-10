@@ -1,5 +1,8 @@
+using System.Diagnostics;
+using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using SreAgent.Api.Models;
+using SreAgent.Application.Services;
 using SreAgent.Application.Tools.Todo.Services;
 using SreAgent.Framework.Abstractions;
 using SreAgent.Framework.Contexts;
@@ -18,6 +21,8 @@ public class SreController : ControllerBase
     private readonly ITodoService _todoService;
     private readonly ITokenEstimator _tokenEstimator;
     private readonly ContextManagerOptions _contextOptions;
+    private readonly IExecutionTracker _executionTracker;
+    private readonly IAuditService _auditService;
     private readonly ILogger<SreController> _logger;
 
     public SreController(
@@ -26,6 +31,8 @@ public class SreController : ControllerBase
         ITodoService todoService,
         ITokenEstimator tokenEstimator,
         ContextManagerOptions contextOptions,
+        IExecutionTracker executionTracker,
+        IAuditService auditService,
         ILogger<SreController> logger)
     {
         _agent = agent;
@@ -33,16 +40,14 @@ public class SreController : ControllerBase
         _todoService = todoService;
         _tokenEstimator = tokenEstimator;
         _contextOptions = contextOptions;
+        _executionTracker = executionTracker;
+        _auditService = auditService;
         _logger = logger;
     }
 
     /// <summary>
     /// 聊天接口（支持新对话和追问）
     /// </summary>
-    /// <remarks>
-    /// - 不传 sessionId：开始新对话
-    /// - 传 sessionId：在现有对话基础上追问
-    /// </remarks>
     [HttpPost("chat")]
     public async Task<ActionResult<ChatResponse>> Chat(
         [FromBody] ChatRequest request,
@@ -50,16 +55,17 @@ public class SreController : ControllerBase
     {
         _logger.LogInformation("收到请求: SessionId={SessionId}", request.SessionId);
 
-        // 1. 准备上下文（包含 System Prompt + 用户输入）
         var context = await PrepareContextAsync(request, ct);
 
-        // 2. 执行 Agent
-        var result = await _agent.ExecuteAsync(context, cancellationToken: ct);
+        var variables = new Dictionary<string, object>
+        {
+            [IExecutionTracker.VariableKey] = _executionTracker
+        };
 
-        // 3. 保存上下文
+        var result = await _agent.ExecuteAsync(context, variables, ct);
+
         await _contextStore.SaveAsync(result.Context.ExportSnapshot(context.SessionId), ct);
 
-        // 4. 返回结果
         return Ok(new ChatResponse
         {
             SessionId = context.SessionId,
@@ -84,20 +90,56 @@ public class SreController : ControllerBase
         CancellationToken ct)
     {
         var input = BuildAlertInput(request);
+        var startedAt = DateTime.UtcNow;
 
-        // 创建新对话上下文
         var context = DefaultContextManager.StartNew(
             input,
             _agent.Options.SystemPrompt,
             _tokenEstimator,
             options: _contextOptions);
 
-        var result = await _agent.ExecuteAsync(context, cancellationToken: ct);
+        var alertMetadata = BuildAlertMetadata(request, context.SessionId, startedAt);
 
-        // 持久化上下文（会话 + 消息）
-        await _contextStore.SaveAsync(result.Context.ExportSnapshot(context.SessionId), ct);
+        // Save initial context to create the session in DB (with alert fields and Running status)
+        await _contextStore.SaveAsync(
+            context.ExportSnapshot(context.SessionId, alertMetadata), ct);
 
-        // 获取生成的 Todo 列表
+        await _auditService.LogAsync(context.SessionId, "SessionStarted",
+            $"Analysis session started for alert: {request.Title}",
+            new { request.Title, request.Severity, request.AffectedService },
+            "system", null, ct);
+
+        var variables = new Dictionary<string, object>
+        {
+            [IExecutionTracker.VariableKey] = _executionTracker
+        };
+
+        var stopwatch = Stopwatch.StartNew();
+        var result = await _agent.ExecuteAsync(context, variables, ct);
+        stopwatch.Stop();
+
+        var completedAt = DateTime.UtcNow;
+        var sessionStatus = result.IsSuccess ? "Completed" : "Failed";
+
+        var completionMetadata = new Dictionary<string, object>(alertMetadata)
+        {
+            ["status"] = sessionStatus,
+            ["completed_at"] = completedAt,
+            ["current_step"] = result.IterationCount,
+            ["diagnosis_summary"] = result.Output ?? string.Empty
+        };
+
+        await _contextStore.SaveAsync(
+            result.Context.ExportSnapshot(context.SessionId, completionMetadata), ct);
+
+        await _auditService.LogAsync(context.SessionId,
+            result.IsSuccess ? "SessionCompleted" : "SessionFailed",
+            result.IsSuccess
+                ? $"Analysis completed in {stopwatch.ElapsedMilliseconds}ms"
+                : $"Analysis failed: {result.Error?.Message}",
+            new { durationMs = stopwatch.ElapsedMilliseconds, iterationCount = result.IterationCount },
+            "system", null, ct);
+
         var todos = await _todoService.GetAsync(context.SessionId);
 
         return Ok(new AnalyzeResponse
@@ -123,12 +165,30 @@ public class SreController : ControllerBase
         });
     }
 
-    /// <summary>
-    /// 准备对话上下文
-    /// </summary>
+    private Dictionary<string, object> BuildAlertMetadata(AnalyzeRequest request, Guid sessionId, DateTime startedAt)
+    {
+        return new Dictionary<string, object>
+        {
+            ["alert_name"] = request.Title,
+            ["alert_id"] = $"alert-{sessionId:N}"[..36],
+            ["service_name"] = request.AffectedService,
+            ["alert_data"] = new
+            {
+                title = request.Title,
+                severity = request.Severity,
+                alertTime = request.AlertTime,
+                affectedService = request.AffectedService,
+                description = request.Description,
+                additionalInfo = request.AdditionalInfo
+            },
+            ["status"] = "Running",
+            ["started_at"] = startedAt,
+            ["current_agent_id"] = _agent.Id
+        };
+    }
+
     private async Task<IContextManager> PrepareContextAsync(ChatRequest request, CancellationToken ct)
     {
-        // 追问：从存储恢复，然后添加新消息
         if (request.SessionId.HasValue)
         {
             var snapshot = await _contextStore.GetAsync(request.SessionId.Value, ct);
@@ -140,7 +200,6 @@ public class SreController : ControllerBase
             }
         }
 
-        // 新对话：创建上下文，设置 System Prompt，添加用户输入
         return DefaultContextManager.StartNew(
             request.Message,
             _agent.Options.SystemPrompt,

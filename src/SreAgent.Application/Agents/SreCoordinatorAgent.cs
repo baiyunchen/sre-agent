@@ -120,8 +120,8 @@ public static class SreCoordinatorAgent
         {
             new TodoWriteTool(todoService),
             new TodoReadTool(todoService),
-            new CloudWatchSimpleQueryTool(cloudWatchService),
-            new CloudWatchInsightsQueryTool(cloudWatchService)
+            new CloudWatchSimpleQueryTool(cloudWatchService, diagnosticDataService),
+            new CloudWatchInsightsQueryTool(cloudWatchService, diagnosticDataService)
         };
 
         // 如果配置了 Knowledge Base 服务，则添加 Knowledge Base 查询工具

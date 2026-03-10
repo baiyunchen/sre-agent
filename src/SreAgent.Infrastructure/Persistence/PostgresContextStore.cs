@@ -43,6 +43,8 @@ public class PostgresContextStore : IContextStore
             session.UpdatedAt = DateTime.UtcNow;
         }
 
+        ApplyMetadataToSession(session, snapshot.Metadata);
+
         // Remove existing messages for this session and replace with snapshot
         var existingMessages = await _context.Messages
             .Where(m => m.SessionId == snapshot.SessionId)
@@ -136,6 +138,44 @@ public class PostgresContextStore : IContextStore
             Metadata = metadata,
             CreatedAt = entity.CreatedAt
         };
+    }
+
+    private static void ApplyMetadataToSession(SessionEntity session, Dictionary<string, object> metadata)
+    {
+        if (metadata.Count == 0) return;
+
+        if (metadata.TryGetValue("alert_name", out var alertName))
+            session.AlertName = alertName?.ToString();
+
+        if (metadata.TryGetValue("alert_id", out var alertId))
+            session.AlertId = alertId?.ToString();
+
+        if (metadata.TryGetValue("service_name", out var serviceName))
+            session.ServiceName = serviceName?.ToString();
+
+        if (metadata.TryGetValue("alert_data", out var alertData) && alertData != null)
+            session.AlertData = JsonSerializer.SerializeToDocument(alertData);
+
+        if (metadata.TryGetValue("status", out var status))
+            session.Status = status?.ToString() ?? session.Status;
+
+        if (metadata.TryGetValue("started_at", out var startedAt) && startedAt is DateTime dt)
+            session.StartedAt = dt;
+
+        if (metadata.TryGetValue("completed_at", out var completedAt) && completedAt is DateTime ct2)
+            session.CompletedAt = ct2;
+
+        if (metadata.TryGetValue("current_agent_id", out var agentId))
+            session.CurrentAgentId = agentId?.ToString();
+
+        if (metadata.TryGetValue("current_step", out var step) && step is int stepInt)
+            session.CurrentStep = stepInt;
+
+        if (metadata.TryGetValue("diagnosis_summary", out var diagSummary))
+            session.DiagnosisSummary = diagSummary?.ToString();
+
+        if (metadata.TryGetValue("confidence", out var conf) && conf is double confVal)
+            session.Confidence = confVal;
     }
 }
 

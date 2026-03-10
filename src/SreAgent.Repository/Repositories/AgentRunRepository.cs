@@ -7,6 +7,7 @@ public interface IAgentRunRepository
 {
     Task<AgentRunEntity> CreateAsync(AgentRunEntity agentRun, CancellationToken ct = default);
     Task UpdateAsync(AgentRunEntity agentRun, CancellationToken ct = default);
+    Task<AgentRunEntity?> GetByIdAsync(Guid id, CancellationToken ct = default);
     Task<IReadOnlyList<AgentRunEntity>> GetBySessionAsync(Guid sessionId, CancellationToken ct = default);
 }
 
@@ -30,6 +31,11 @@ public class AgentRunRepository : IAgentRunRepository
     {
         _context.AgentRuns.Update(agentRun);
         await _context.SaveChangesAsync(ct);
+    }
+
+    public async Task<AgentRunEntity?> GetByIdAsync(Guid id, CancellationToken ct = default)
+    {
+        return await _context.AgentRuns.FirstOrDefaultAsync(r => r.Id == id, ct);
     }
 
     public async Task<IReadOnlyList<AgentRunEntity>> GetBySessionAsync(Guid sessionId, CancellationToken ct = default)

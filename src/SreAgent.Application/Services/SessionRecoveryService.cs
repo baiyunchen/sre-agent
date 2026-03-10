@@ -18,17 +18,20 @@ public class SessionRecoveryService : ISessionRecoveryService
     private readonly ICheckpointService _checkpointService;
     private readonly ITokenEstimator _tokenEstimator;
     private readonly ContextManagerOptions _contextOptions;
+    private readonly IAuditService _auditService;
 
     public SessionRecoveryService(
         ISessionRepository sessionRepository,
         ICheckpointService checkpointService,
         ITokenEstimator tokenEstimator,
-        ContextManagerOptions contextOptions)
+        ContextManagerOptions contextOptions,
+        IAuditService auditService)
     {
         _sessionRepository = sessionRepository;
         _checkpointService = checkpointService;
         _tokenEstimator = tokenEstimator;
         _contextOptions = contextOptions;
+        _auditService = auditService;
     }
 
     public async Task<bool> CanResumeAsync(Guid sessionId, CancellationToken ct = default)
@@ -60,6 +63,11 @@ public class SessionRecoveryService : ISessionRecoveryService
 
         session.Status = "Running";
         await _sessionRepository.UpdateAsync(session, ct);
+
+        await _auditService.LogAsync(sessionId, "SessionResumed",
+            $"Session resumed from checkpoint {checkpoint.CheckpointName}",
+            new { checkpointId = checkpoint.Id, continueInput },
+            "system", null, ct);
 
         return await agent.ExecuteAsync(context, cancellationToken: ct);
     }

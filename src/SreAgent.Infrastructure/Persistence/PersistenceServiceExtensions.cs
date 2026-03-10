@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using SreAgent.Application.Services;
+using SreAgent.Framework.Abstractions;
 using SreAgent.Framework.Contexts;
 using SreAgent.Infrastructure.BackgroundJobs;
 using SreAgent.Repository;
@@ -34,6 +35,7 @@ public static class PersistenceServiceExtensions
         services.AddScoped<IInterventionService, InterventionService>();
         services.AddScoped<ISessionRecoveryService, SessionRecoveryService>();
         services.AddScoped<IAuditService, AuditService>();
+        services.AddScoped<IExecutionTracker, PersistenceExecutionTracker>();
 
         // Register background services
         services.AddHostedService<DataCleanupService>();

@@ -121,46 +121,81 @@ public class ToolLoopAgent : IAgent
         CancellationToken ct)
     {
         var chatClient = _modelProvider.GetChatClient(Options.ModelCapability);
+        var tracker = GetTracker(variables);
+        Guid? agentRunId = null;
 
-        for (var iteration = 0; iteration < Options.MaxIterations; iteration++)
+        if (tracker != null)
         {
-            ct.ThrowIfCancellationRequested();
-            LogIterationStart(executionId, iteration, context);
-
-            // 获取消息（ContextManager 内部自动剪枝）
-            var messages = context.GetChatMessages();
-
-            // 调用 LLM
-            var (response, tokenUsage) = await _llmCaller.CallAsync(
-                chatClient, messages, Options.Tools, Options.Temperature, Options.MaxTokens, ct);
-
-            // 添加响应并记录 Token 使用
-            context.AddAssistantMessage(response, tokenUsage, Id);
-
-            // 检查是否需要调用工具
-            var toolCalls = response.Contents.OfType<FunctionCallContent>().ToList();
-            if (toolCalls.Count > 0)
-            {
-                await HandleToolCallsAsync(context, variables, toolCalls, executionId, iteration, ct);
-                continue;
-            }
-
-            // 检查是否有最终回复
-            var output = ExtractTextContent(response);
-            if (!string.IsNullOrEmpty(output))
-            {
-                stopwatch.Stop();
-                _logger.LogInformation(
-                    "[{ExecutionId}] 执行完成，迭代: {Iterations}，耗时: {Ms}ms",
-                    executionId, iteration + 1, stopwatch.ElapsedMilliseconds);
-
-                return AgentResult.Success(output, context, context.TotalTokenUsage, iteration + 1);
-            }
+            try { agentRunId = await tracker.OnAgentStartAsync(context.SessionId, Id, Name, ct); }
+            catch (Exception ex) { _logger.LogWarning(ex, "Failed to track agent start"); }
         }
 
-        _logger.LogWarning("[{ExecutionId}] 达到最大迭代次数 {Max}", executionId, Options.MaxIterations);
-        return CreateFailureResult(context, stopwatch,
-            new AgentError("MAX_ITERATIONS", "Reached maximum iterations"), context.TotalTokenUsage);
+        try
+        {
+            for (var iteration = 0; iteration < Options.MaxIterations; iteration++)
+            {
+                ct.ThrowIfCancellationRequested();
+                LogIterationStart(executionId, iteration, context);
+
+                var messages = context.GetChatMessages();
+
+                var (response, tokenUsage) = await _llmCaller.CallAsync(
+                    chatClient, messages, Options.Tools, Options.Temperature, Options.MaxTokens, ct);
+
+                context.AddAssistantMessage(response, tokenUsage, Id);
+
+                var toolCalls = response.Contents.OfType<FunctionCallContent>().ToList();
+                if (toolCalls.Count > 0)
+                {
+                    await HandleToolCallsAsync(context, variables, toolCalls, executionId, iteration, agentRunId, ct);
+                    continue;
+                }
+
+                var output = ExtractTextContent(response);
+                if (!string.IsNullOrEmpty(output))
+                {
+                    stopwatch.Stop();
+                    _logger.LogInformation(
+                        "[{ExecutionId}] 执行完成，迭代: {Iterations}，耗时: {Ms}ms",
+                        executionId, iteration + 1, stopwatch.ElapsedMilliseconds);
+
+                    if (tracker != null && agentRunId.HasValue)
+                    {
+                        try { await tracker.OnAgentCompleteAsync(agentRunId.Value, true, output, null, stopwatch.ElapsedMilliseconds, ct); }
+                        catch (Exception ex) { _logger.LogWarning(ex, "Failed to track agent completion"); }
+                    }
+
+                    return AgentResult.Success(output, context, context.TotalTokenUsage, iteration + 1);
+                }
+            }
+
+            _logger.LogWarning("[{ExecutionId}] 达到最大迭代次数 {Max}", executionId, Options.MaxIterations);
+
+            if (tracker != null && agentRunId.HasValue)
+            {
+                try { await tracker.OnAgentCompleteAsync(agentRunId.Value, false, null, "Reached maximum iterations", stopwatch.ElapsedMilliseconds, ct); }
+                catch (Exception ex) { _logger.LogWarning(ex, "Failed to track agent failure"); }
+            }
+
+            return CreateFailureResult(context, stopwatch,
+                new AgentError("MAX_ITERATIONS", "Reached maximum iterations"), context.TotalTokenUsage);
+        }
+        catch (Exception)
+        {
+            if (tracker != null && agentRunId.HasValue)
+            {
+                try { await tracker.OnAgentCompleteAsync(agentRunId.Value, false, null, "Agent execution failed with exception", stopwatch.ElapsedMilliseconds, CancellationToken.None); }
+                catch { /* best effort */ }
+            }
+            throw;
+        }
+    }
+
+    private static IExecutionTracker? GetTracker(IReadOnlyDictionary<string, object> variables)
+    {
+        return variables.TryGetValue(IExecutionTracker.VariableKey, out var tracker)
+            ? tracker as IExecutionTracker
+            : null;
     }
 
     private async Task HandleToolCallsAsync(
@@ -169,6 +204,7 @@ public class ToolLoopAgent : IAgent
         List<FunctionCallContent> toolCalls,
         string executionId,
         int iteration,
+        Guid? agentRunId,
         CancellationToken ct)
     {
         var names = string.Join(", ", toolCalls.Select(t => t.Name));
@@ -176,7 +212,7 @@ public class ToolLoopAgent : IAgent
             executionId, iteration + 1, names);
 
         var toolResults = await _toolExecutor.ExecuteAsync(
-            context.SessionId, Id, toolCalls, Options.Tools, variables, ct, context);
+            context.SessionId, Id, toolCalls, Options.Tools, variables, ct, context, agentRunId);
 
         context.AddToolResultMessage(toolResults);
     }
