@@ -10,6 +10,12 @@ namespace SreAgent.Api.Controllers;
 [Route("api/[controller]")]
 public class SessionController : ControllerBase
 {
+    private static readonly HashSet<string> AllowedSortFields =
+        new(["createdAt", "updatedAt", "status"], StringComparer.OrdinalIgnoreCase);
+
+    private static readonly HashSet<string> AllowedSortOrders =
+        new(["asc", "desc"], StringComparer.OrdinalIgnoreCase);
+
     private readonly ISessionRepository _sessionRepository;
     private readonly ICheckpointService _checkpointService;
     private readonly IInterventionService _interventionService;
@@ -34,6 +40,46 @@ public class SessionController : ControllerBase
         _auditService = auditService;
         _agent = agent;
         _logger = logger;
+    }
+
+    [HttpGet("/api/sessions")]
+    public async Task<IActionResult> GetSessions([FromQuery] GetSessionsRequest request, CancellationToken ct)
+    {
+        request.Sort = string.IsNullOrWhiteSpace(request.Sort) ? "createdAt" : request.Sort.Trim();
+        request.SortOrder = string.IsNullOrWhiteSpace(request.SortOrder) ? "desc" : request.SortOrder.Trim();
+
+        if (request.Page < 1)
+            return BadRequest(new { error = "page must be greater than or equal to 1" });
+
+        if (request.PageSize < 1 || request.PageSize > 100)
+            return BadRequest(new { error = "pageSize must be between 1 and 100" });
+
+        if (!AllowedSortFields.Contains(request.Sort))
+            return BadRequest(new { error = "sort must be one of: createdAt, updatedAt, status" });
+
+        if (!AllowedSortOrders.Contains(request.SortOrder))
+            return BadRequest(new { error = "sortOrder must be one of: asc, desc" });
+
+        var query = new SessionListQuery
+        {
+            Page = request.Page,
+            PageSize = request.PageSize,
+            Status = request.Status,
+            Source = request.Source,
+            Sort = request.Sort,
+            SortOrder = request.SortOrder,
+            Search = request.Search
+        };
+
+        var (items, total) = await _sessionRepository.ListAsync(query, ct);
+
+        return Ok(new SessionListResponse
+        {
+            Items = items.Select(MapSessionSummary).ToList(),
+            Total = total,
+            Page = request.Page,
+            PageSize = request.PageSize
+        });
     }
 
     [HttpGet("{sessionId:guid}")]
@@ -146,6 +192,48 @@ public class SessionController : ControllerBase
             a.OccurredAt
         }));
     }
+
+    private static SessionSummaryDto MapSessionSummary(SreAgent.Repository.Entities.SessionEntity session)
+    {
+        var now = DateTime.UtcNow;
+        int? duration = session.StartedAt.HasValue
+            ? (int)Math.Max(0, ((session.CompletedAt ?? now) - session.StartedAt.Value).TotalSeconds)
+            : null;
+
+        return new SessionSummaryDto
+        {
+            Id = session.Id,
+            Status = session.Status,
+            AlertName = session.AlertName,
+            AlertId = session.AlertId,
+            ServiceName = session.ServiceName,
+            Source = ReadStringField(session.AlertData, "source", "alertSource"),
+            Severity = ReadStringField(session.AlertData, "severity", "alertSeverity"),
+            CreatedAt = session.CreatedAt,
+            UpdatedAt = session.UpdatedAt,
+            Duration = duration,
+            AgentSteps = session.CurrentStep
+        };
+    }
+
+    private static string? ReadStringField(JsonDocument? jsonDocument, params string[] propertyNames)
+    {
+        if (jsonDocument == null || jsonDocument.RootElement.ValueKind != JsonValueKind.Object)
+            return null;
+
+        foreach (var propertyName in propertyNames)
+        {
+            if (!jsonDocument.RootElement.TryGetProperty(propertyName, out var valueElement))
+                continue;
+
+            if (valueElement.ValueKind != JsonValueKind.String)
+                continue;
+
+            return valueElement.GetString();
+        }
+
+        return null;
+    }
 }
 
 public class InterventionRequest
@@ -157,4 +245,38 @@ public class InterventionRequest
 public class ResumeRequest
 {
     public string? ContinueInput { get; set; }
+}
+
+public class GetSessionsRequest
+{
+    public int Page { get; set; } = 1;
+    public int PageSize { get; set; } = 20;
+    public string? Status { get; set; }
+    public string? Source { get; set; }
+    public string Sort { get; set; } = "createdAt";
+    public string SortOrder { get; set; } = "desc";
+    public string? Search { get; set; }
+}
+
+public class SessionListResponse
+{
+    public List<SessionSummaryDto> Items { get; set; } = [];
+    public int Total { get; set; }
+    public int Page { get; set; }
+    public int PageSize { get; set; }
+}
+
+public class SessionSummaryDto
+{
+    public Guid Id { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public string? AlertName { get; set; }
+    public string? AlertId { get; set; }
+    public string? ServiceName { get; set; }
+    public string? Source { get; set; }
+    public string? Severity { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime UpdatedAt { get; set; }
+    public int? Duration { get; set; }
+    public int? AgentSteps { get; set; }
 }

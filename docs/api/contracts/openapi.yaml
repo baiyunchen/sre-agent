@@ -10,6 +10,8 @@ servers:
 tags:
   - name: sre
     description: Alert analysis APIs
+  - name: sessions
+    description: Session query APIs
 paths:
   /api/sre/analyze:
     post:
@@ -35,6 +37,72 @@ paths:
           description: Invalid request
         '500':
           description: Internal error
+  /api/sessions:
+    get:
+      tags: [sessions]
+      summary: Get paginated sessions list
+      description: |
+        Supports pagination, filtering, sorting, and keyword search for sessions.
+      parameters:
+        - in: query
+          name: page
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - in: query
+          name: pageSize
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - in: query
+          name: status
+          required: false
+          schema:
+            type: string
+            enum: [Running, Completed, Failed, WaitingApproval, Cancelled, TimedOut]
+        - in: query
+          name: source
+          required: false
+          schema:
+            type: string
+            enum: [CloudWatch, Prometheus, Slack Manual]
+        - in: query
+          name: sort
+          required: false
+          schema:
+            type: string
+            enum: [createdAt, updatedAt, status]
+            default: createdAt
+        - in: query
+          name: sortOrder
+          required: false
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+        - in: query
+          name: search
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Sessions list returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionListResponse'
+        '400':
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 components:
   schemas:
     AnalyzeRequest:
@@ -65,3 +133,59 @@ components:
         error:
           type: string
           nullable: true
+    SessionSummary:
+      type: object
+      required: [id, status, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        alertName:
+          type: string
+          nullable: true
+        alertId:
+          type: string
+          nullable: true
+        serviceName:
+          type: string
+          nullable: true
+        source:
+          type: string
+          nullable: true
+        severity:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        duration:
+          type: integer
+          nullable: true
+          description: Session duration in seconds
+        agentSteps:
+          type: integer
+          nullable: true
+    SessionListResponse:
+      type: object
+      required: [items, total, page, pageSize]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SessionSummary'
+        total:
+          type: integer
+        page:
+          type: integer
+        pageSize:
+          type: integer
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
