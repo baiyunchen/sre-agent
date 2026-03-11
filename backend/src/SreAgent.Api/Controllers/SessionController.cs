@@ -17,6 +17,8 @@ public class SessionController : ControllerBase
         new(["asc", "desc"], StringComparer.OrdinalIgnoreCase);
 
     private readonly ISessionRepository _sessionRepository;
+    private readonly IMessageRepository _messageRepository;
+    private readonly IAgentRunRepository _agentRunRepository;
     private readonly ICheckpointService _checkpointService;
     private readonly IInterventionService _interventionService;
     private readonly ISessionRecoveryService _recoveryService;
@@ -26,6 +28,8 @@ public class SessionController : ControllerBase
 
     public SessionController(
         ISessionRepository sessionRepository,
+        IMessageRepository messageRepository,
+        IAgentRunRepository agentRunRepository,
         ICheckpointService checkpointService,
         IInterventionService interventionService,
         ISessionRecoveryService recoveryService,
@@ -34,6 +38,8 @@ public class SessionController : ControllerBase
         ILogger<SessionController> logger)
     {
         _sessionRepository = sessionRepository;
+        _messageRepository = messageRepository;
+        _agentRunRepository = agentRunRepository;
         _checkpointService = checkpointService;
         _interventionService = interventionService;
         _recoveryService = recoveryService;
@@ -91,6 +97,31 @@ public class SessionController : ControllerBase
             return NotFound();
 
         return Ok(MapSessionDetail(session));
+    }
+
+    [HttpGet("/api/sessions/{sessionId:guid}/timeline")]
+    public async Task<IActionResult> GetSessionTimeline(Guid sessionId, CancellationToken ct)
+    {
+        var session = await _sessionRepository.GetAsync(sessionId, ct);
+        if (session == null)
+            return NotFound();
+
+        var messagesTask = _messageRepository.GetBySessionAsync(sessionId, ct);
+        var agentRunsTask = _agentRunRepository.GetBySessionAsync(sessionId, ct);
+        await Task.WhenAll(messagesTask, agentRunsTask);
+
+        var events = new List<TimelineEventResponse>();
+        events.AddRange(messagesTask.Result.Select(MapMessageEvent));
+        events.AddRange(agentRunsTask.Result.SelectMany(MapAgentRunEvents));
+
+        return Ok(new SessionTimelineResponse
+        {
+            SessionId = sessionId,
+            Events = events
+                .OrderBy(e => e.Timestamp)
+                .ThenBy(e => e.EventType, StringComparer.Ordinal)
+                .ToList()
+        });
     }
 
     [HttpPost("{sessionId:guid}/interrupt")]
@@ -250,6 +281,76 @@ public class SessionController : ControllerBase
 
         return null;
     }
+
+    private static TimelineEventResponse MapMessageEvent(SreAgent.Repository.Entities.MessageEntity message)
+    {
+        return new TimelineEventResponse
+        {
+            Id = message.Id.ToString(),
+            EventType = "message",
+            Timestamp = message.CreatedAt,
+            Title = $"Message: {message.Role}",
+            Detail = ExtractMessageSummary(message.Parts),
+            Status = null,
+            Actor = message.AgentId ?? message.Role
+        };
+    }
+
+    private static IEnumerable<TimelineEventResponse> MapAgentRunEvents(SreAgent.Repository.Entities.AgentRunEntity agentRun)
+    {
+        var actor = agentRun.AgentName ?? agentRun.AgentId;
+        var runEvent = new TimelineEventResponse
+        {
+            Id = agentRun.Id.ToString(),
+            EventType = "agent_run",
+            Timestamp = agentRun.StartedAt,
+            Title = $"Agent Run: {actor}",
+            Detail = string.IsNullOrWhiteSpace(agentRun.ErrorMessage)
+                ? $"Agent status: {agentRun.Status}"
+                : agentRun.ErrorMessage,
+            Status = agentRun.Status,
+            Actor = actor
+        };
+
+        var toolEvents = agentRun.ToolInvocations.Select(tool => new TimelineEventResponse
+        {
+            Id = tool.Id.ToString(),
+            EventType = "tool_invocation",
+            Timestamp = tool.RequestedAt,
+            Title = $"Tool: {tool.ToolName}",
+            Detail = string.IsNullOrWhiteSpace(tool.ErrorMessage)
+                ? $"Tool status: {tool.Status}"
+                : tool.ErrorMessage,
+            Status = tool.Status,
+            Actor = actor
+        });
+
+        return [runEvent, .. toolEvents];
+    }
+
+    private static string? ExtractMessageSummary(JsonDocument? parts)
+    {
+        if (parts == null || parts.RootElement.ValueKind != JsonValueKind.Array || parts.RootElement.GetArrayLength() == 0)
+            return null;
+
+        var firstPart = parts.RootElement[0];
+        if (firstPart.ValueKind != JsonValueKind.Object)
+            return null;
+
+        if (firstPart.TryGetProperty("text", out var textProperty)
+            && textProperty.ValueKind == JsonValueKind.String)
+        {
+            return textProperty.GetString();
+        }
+
+        if (firstPart.TryGetProperty("content", out var contentProperty)
+            && contentProperty.ValueKind == JsonValueKind.String)
+        {
+            return contentProperty.GetString();
+        }
+
+        return firstPart.GetRawText();
+    }
 }
 
 public class InterventionRequest
@@ -316,4 +417,21 @@ public class SessionDetailResponse
     public DateTime? StartedAt { get; set; }
     public DateTime? CompletedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
+}
+
+public class SessionTimelineResponse
+{
+    public Guid SessionId { get; set; }
+    public List<TimelineEventResponse> Events { get; set; } = [];
+}
+
+public class TimelineEventResponse
+{
+    public string Id { get; set; } = string.Empty;
+    public string EventType { get; set; } = string.Empty;
+    public DateTime Timestamp { get; set; }
+    public string Title { get; set; } = string.Empty;
+    public string? Detail { get; set; }
+    public string? Status { get; set; }
+    public string? Actor { get; set; }
 }

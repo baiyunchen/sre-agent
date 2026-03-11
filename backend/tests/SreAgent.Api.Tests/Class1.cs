@@ -129,10 +129,105 @@ public class SessionControllerTests
         payload.Duration.Should().BeGreaterThan(0);
     }
 
-    private static SessionController CreateController(ISessionRepository sessionRepository)
+    [Fact]
+    public async Task GetSessionTimeline_ShouldReturnNotFound_WhenSessionDoesNotExist()
+    {
+        var sessionRepository = new Mock<ISessionRepository>();
+        sessionRepository
+            .Setup(r => r.GetAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((SessionEntity?)null);
+
+        var controller = CreateController(sessionRepository.Object);
+        var result = await controller.GetSessionTimeline(Guid.NewGuid(), CancellationToken.None);
+
+        result.Should().BeOfType<NotFoundResult>();
+    }
+
+    [Fact]
+    public async Task GetSessionTimeline_ShouldReturnMergedAndOrderedEvents()
+    {
+        var sessionId = Guid.NewGuid();
+        var t1 = DateTime.UtcNow.AddMinutes(-10);
+        var t2 = DateTime.UtcNow.AddMinutes(-9);
+        var t3 = DateTime.UtcNow.AddMinutes(-8);
+        var t4 = DateTime.UtcNow.AddMinutes(-7);
+
+        var sessionRepository = new Mock<ISessionRepository>();
+        var messageRepository = new Mock<IMessageRepository>();
+        var agentRunRepository = new Mock<IAgentRunRepository>();
+
+        sessionRepository
+            .Setup(r => r.GetAsync(sessionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SessionEntity { Id = sessionId, Status = "Running" });
+
+        messageRepository
+            .Setup(r => r.GetBySessionAsync(sessionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(
+            [
+                new MessageEntity
+                {
+                    Id = Guid.NewGuid(),
+                    SessionId = sessionId,
+                    Role = "User",
+                    Parts = JsonDocument.Parse("""[{"text":"first message"}]"""),
+                    CreatedAt = t1
+                },
+                new MessageEntity
+                {
+                    Id = Guid.NewGuid(),
+                    SessionId = sessionId,
+                    Role = "Assistant",
+                    Parts = JsonDocument.Parse("""[{"text":"second message"}]"""),
+                    CreatedAt = t3
+                }
+            ]);
+
+        agentRunRepository
+            .Setup(r => r.GetBySessionAsync(sessionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(
+            [
+                new AgentRunEntity
+                {
+                    Id = Guid.NewGuid(),
+                    SessionId = sessionId,
+                    AgentId = "sre-coordinator",
+                    AgentName = "SreCoordinator",
+                    Status = "Completed",
+                    StartedAt = t2,
+                    ToolInvocations =
+                    [
+                        new ToolInvocationEntity
+                        {
+                            Id = Guid.NewGuid(),
+                            AgentRunId = Guid.NewGuid(),
+                            ToolName = "cloudwatch_simple_query",
+                            Status = "Completed",
+                            RequestedAt = t4
+                        }
+                    ]
+                }
+            ]);
+
+        var controller = CreateController(sessionRepository.Object, messageRepository.Object, agentRunRepository.Object);
+        var result = await controller.GetSessionTimeline(sessionId, CancellationToken.None);
+
+        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
+        var payload = okResult.Value.Should().BeOfType<SessionTimelineResponse>().Subject;
+
+        payload.SessionId.Should().Be(sessionId);
+        payload.Events.Should().HaveCount(4);
+        payload.Events.Select(e => e.EventType).Should().ContainInOrder("message", "agent_run", "message", "tool_invocation");
+    }
+
+    private static SessionController CreateController(
+        ISessionRepository sessionRepository,
+        IMessageRepository? messageRepository = null,
+        IAgentRunRepository? agentRunRepository = null)
     {
         return new SessionController(
             sessionRepository,
+            messageRepository ?? Mock.Of<IMessageRepository>(),
+            agentRunRepository ?? Mock.Of<IAgentRunRepository>(),
             Mock.Of<ICheckpointService>(),
             Mock.Of<IInterventionService>(),
             Mock.Of<ISessionRecoveryService>(),

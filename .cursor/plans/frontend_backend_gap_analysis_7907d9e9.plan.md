@@ -13,7 +13,7 @@ todos:
     status: in_progress
   - id: backend-api-p0
     content: 后端 P0 API 实现：sessions 列表、session timeline、diagnosis、tool-invocations、todos、send message
-    status: pending
+    status: in_progress
   - id: backend-api-p1
     content: 后端 P1 API 实现：dashboard stats/activities/active-sessions、SSE 端点、approval CRUD、tools/agents 注册表
     status: pending
