@@ -4,6 +4,8 @@ using Microsoft.Extensions.Logging;
 using Moq;
 using SreAgent.Api.Controllers;
 using SreAgent.Application.Services;
+using SreAgent.Application.Tools.Todo.Models;
+using SreAgent.Application.Tools.Todo.Services;
 using SreAgent.Framework.Abstractions;
 using SreAgent.Repository.Entities;
 using SreAgent.Repository.Repositories;
@@ -219,15 +221,301 @@ public class SessionControllerTests
         payload.Events.Select(e => e.EventType).Should().ContainInOrder("message", "agent_run", "message", "tool_invocation");
     }
 
+    [Fact]
+    public async Task GetSessionDiagnosis_ShouldReturnStructuredPayload()
+    {
+        var sessionId = Guid.NewGuid();
+        var sessionRepository = new Mock<ISessionRepository>();
+        var diagnosticRepository = new Mock<IDiagnosticDataRepository>();
+
+        sessionRepository
+            .Setup(r => r.GetAsync(sessionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SessionEntity
+            {
+                Id = sessionId,
+                Status = "Completed",
+                DiagnosisSummary = "库存查询失败导致告警持续触发",
+                Confidence = 0.78
+            });
+
+        diagnosticRepository
+            .Setup(r => r.GetSummaryAsync(sessionId, It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DiagnosticSummaryResult
+            {
+                TotalRecords = 2,
+                BySeverity = new Dictionary<string, int> { ["ERROR"] = 2 },
+                BySource = new Dictionary<string, int> { ["CloudWatchLogs"] = 2 },
+                EarliestTimestamp = DateTime.UtcNow.AddMinutes(-5),
+                LatestTimestamp = DateTime.UtcNow
+            });
+
+        diagnosticRepository
+            .Setup(r => r.SearchAsync(
+                sessionId,
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<DateTime?>(),
+                It.IsAny<DateTime?>(),
+                It.IsAny<int>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(
+            [
+                new DiagnosticDataEntity
+                {
+                    Id = Guid.NewGuid(),
+                    SessionId = sessionId,
+                    SourceType = "CloudWatchLogs",
+                    Content = "Stock lookup failed for key undefined-PROD001"
+                }
+            ]);
+
+        var controller = CreateController(sessionRepository.Object, diagnosticDataRepository: diagnosticRepository.Object);
+        var result = await controller.GetSessionDiagnosis(sessionId, CancellationToken.None);
+
+        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
+        var payload = okResult.Value.Should().BeOfType<SessionDiagnosisResponse>().Subject;
+
+        payload.SessionId.Should().Be(sessionId);
+        payload.Hypothesis.Should().Contain("库存查询失败");
+        payload.Confidence.Should().Be(0.78);
+        payload.TotalRecords.Should().Be(2);
+        payload.Evidence.Should().ContainSingle(item => item.Contains("CloudWatchLogs", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task GetSessionDiagnosis_ShouldUseStructuredDiagnosisJson_WhenAvailable()
+    {
+        var sessionId = Guid.NewGuid();
+        var sessionRepository = new Mock<ISessionRepository>();
+        var diagnosticRepository = new Mock<IDiagnosticDataRepository>();
+
+        sessionRepository
+            .Setup(r => r.GetAsync(sessionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SessionEntity
+            {
+                Id = sessionId,
+                Status = "Completed",
+                Diagnosis = JsonDocument.Parse(
+                    """{"hypothesis":"数据库连接池耗尽","confidence":0.91,"evidence":["连接数持续增长"],"recommendedActions":["增加连接池上限"]}""")
+            });
+
+        diagnosticRepository
+            .Setup(r => r.GetSummaryAsync(sessionId, It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DiagnosticSummaryResult());
+
+        diagnosticRepository
+            .Setup(r => r.SearchAsync(
+                sessionId,
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<DateTime?>(),
+                It.IsAny<DateTime?>(),
+                It.IsAny<int>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<DiagnosticDataEntity>());
+
+        var controller = CreateController(sessionRepository.Object, diagnosticDataRepository: diagnosticRepository.Object);
+        var result = await controller.GetSessionDiagnosis(sessionId, CancellationToken.None);
+
+        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
+        var payload = okResult.Value.Should().BeOfType<SessionDiagnosisResponse>().Subject;
+
+        payload.Hypothesis.Should().Be("数据库连接池耗尽");
+        payload.Confidence.Should().Be(0.91);
+        payload.Evidence.Should().Contain("连接数持续增长");
+        payload.RecommendedActions.Should().Contain("增加连接池上限");
+    }
+
+    [Fact]
+    public async Task GetSessionDiagnosis_ShouldExtractRecommendedActionsFromSummaryBullets()
+    {
+        var sessionId = Guid.NewGuid();
+        var sessionRepository = new Mock<ISessionRepository>();
+        var diagnosticRepository = new Mock<IDiagnosticDataRepository>();
+
+        sessionRepository
+            .Setup(r => r.GetAsync(sessionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SessionEntity
+            {
+                Id = sessionId,
+                Status = "Completed",
+                DiagnosisSummary = """
+                    分析结论
+                    - 扩容库存服务实例
+                    - 增加参数校验并发布补丁
+                    """
+            });
+
+        diagnosticRepository
+            .Setup(r => r.GetSummaryAsync(sessionId, It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DiagnosticSummaryResult());
+
+        diagnosticRepository
+            .Setup(r => r.SearchAsync(
+                sessionId,
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<DateTime?>(),
+                It.IsAny<DateTime?>(),
+                It.IsAny<int>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<DiagnosticDataEntity>());
+
+        var controller = CreateController(sessionRepository.Object, diagnosticDataRepository: diagnosticRepository.Object);
+        var result = await controller.GetSessionDiagnosis(sessionId, CancellationToken.None);
+
+        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
+        var payload = okResult.Value.Should().BeOfType<SessionDiagnosisResponse>().Subject;
+
+        payload.RecommendedActions.Should().ContainInOrder("扩容库存服务实例", "增加参数校验并发布补丁");
+    }
+
+    [Fact]
+    public async Task GetSessionToolInvocations_ShouldReturnFlattenedItems()
+    {
+        var sessionId = Guid.NewGuid();
+        var t1 = DateTime.UtcNow.AddMinutes(-3);
+        var t2 = DateTime.UtcNow.AddMinutes(-1);
+
+        var sessionRepository = new Mock<ISessionRepository>();
+        var agentRunRepository = new Mock<IAgentRunRepository>();
+
+        sessionRepository
+            .Setup(r => r.GetAsync(sessionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SessionEntity { Id = sessionId, Status = "Completed" });
+
+        agentRunRepository
+            .Setup(r => r.GetBySessionAsync(sessionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(
+            [
+                new AgentRunEntity
+                {
+                    Id = Guid.NewGuid(),
+                    SessionId = sessionId,
+                    AgentId = "sre-coordinator",
+                    AgentName = "SreCoordinator",
+                    ToolInvocations =
+                    [
+                        new ToolInvocationEntity
+                        {
+                            Id = Guid.NewGuid(),
+                            AgentRunId = Guid.NewGuid(),
+                            ToolName = "cloudwatch_simple_query",
+                            Status = "Completed",
+                            RequestedAt = t1
+                        },
+                        new ToolInvocationEntity
+                        {
+                            Id = Guid.NewGuid(),
+                            AgentRunId = Guid.NewGuid(),
+                            ToolName = "knowledge_base_query",
+                            Status = "Failed",
+                            ErrorMessage = "timeout",
+                            RequestedAt = t2
+                        }
+                    ]
+                }
+            ]);
+
+        var controller = CreateController(sessionRepository.Object, agentRunRepository: agentRunRepository.Object);
+        var result = await controller.GetSessionToolInvocations(sessionId, CancellationToken.None);
+
+        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
+        var payload = okResult.Value.Should().BeOfType<SessionToolInvocationsResponse>().Subject;
+
+        payload.Items.Should().HaveCount(2);
+        payload.Items[0].ToolName.Should().Be("knowledge_base_query");
+        payload.Items[0].ErrorMessage.Should().Be("timeout");
+        payload.Items[1].ToolName.Should().Be("cloudwatch_simple_query");
+    }
+
+    [Fact]
+    public async Task GetSessionTodos_ShouldReturnMappedTodos()
+    {
+        var sessionId = Guid.NewGuid();
+        var sessionRepository = new Mock<ISessionRepository>();
+        var todoService = new Mock<ITodoService>();
+
+        sessionRepository
+            .Setup(r => r.GetAsync(sessionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SessionEntity { Id = sessionId, Status = "Running" });
+
+        todoService
+            .Setup(s => s.GetAsync(sessionId))
+            .ReturnsAsync(
+            [
+                new TodoItem
+                {
+                    Id = "t-1",
+                    Content = "分析错误日志",
+                    Priority = TodoPriority.High,
+                    Status = TodoStatus.InProgress,
+                    CreatedAt = DateTime.UtcNow.AddMinutes(-2)
+                },
+                new TodoItem
+                {
+                    Id = "t-2",
+                    Content = "输出修复建议",
+                    Priority = TodoPriority.Medium,
+                    Status = TodoStatus.Completed,
+                    CreatedAt = DateTime.UtcNow.AddMinutes(-1),
+                    CompletedAt = DateTime.UtcNow
+                },
+                new TodoItem
+                {
+                    Id = "t-3",
+                    Content = "忽略已失效告警",
+                    Priority = TodoPriority.Low,
+                    Status = TodoStatus.Cancelled,
+                    CreatedAt = DateTime.UtcNow
+                }
+            ]);
+
+        var controller = CreateController(sessionRepository.Object, todoService: todoService.Object);
+        var result = await controller.GetSessionTodos(sessionId, CancellationToken.None);
+
+        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
+        var payload = okResult.Value.Should().BeOfType<SessionTodosResponse>().Subject;
+
+        payload.SessionId.Should().Be(sessionId);
+        payload.Items.Should().HaveCount(3);
+        payload.Items[0].Status.Should().Be("in_progress");
+        payload.Items[0].Priority.Should().Be("high");
+        payload.Items[1].Status.Should().Be("completed");
+        payload.Items[2].Status.Should().Be("cancelled");
+        payload.Items[2].Priority.Should().Be("low");
+    }
+
+    [Fact]
+    public async Task GetSessionDiagnosis_ShouldReturnNotFound_WhenSessionDoesNotExist()
+    {
+        var sessionRepository = new Mock<ISessionRepository>();
+        sessionRepository
+            .Setup(r => r.GetAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((SessionEntity?)null);
+
+        var controller = CreateController(sessionRepository.Object);
+        var result = await controller.GetSessionDiagnosis(Guid.NewGuid(), CancellationToken.None);
+
+        result.Should().BeOfType<NotFoundResult>();
+    }
+
     private static SessionController CreateController(
         ISessionRepository sessionRepository,
         IMessageRepository? messageRepository = null,
-        IAgentRunRepository? agentRunRepository = null)
+        IAgentRunRepository? agentRunRepository = null,
+        IDiagnosticDataRepository? diagnosticDataRepository = null,
+        ITodoService? todoService = null)
     {
         return new SessionController(
             sessionRepository,
             messageRepository ?? Mock.Of<IMessageRepository>(),
             agentRunRepository ?? Mock.Of<IAgentRunRepository>(),
+            diagnosticDataRepository ?? Mock.Of<IDiagnosticDataRepository>(),
+            todoService ?? Mock.Of<ITodoService>(),
             Mock.Of<ICheckpointService>(),
             Mock.Of<IInterventionService>(),
             Mock.Of<ISessionRecoveryService>(),

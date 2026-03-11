@@ -1,6 +1,8 @@
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using SreAgent.Application.Services;
+using SreAgent.Application.Tools.Todo.Models;
+using SreAgent.Application.Tools.Todo.Services;
 using SreAgent.Framework.Abstractions;
 using SreAgent.Repository.Repositories;
 
@@ -19,6 +21,8 @@ public class SessionController : ControllerBase
     private readonly ISessionRepository _sessionRepository;
     private readonly IMessageRepository _messageRepository;
     private readonly IAgentRunRepository _agentRunRepository;
+    private readonly IDiagnosticDataRepository _diagnosticDataRepository;
+    private readonly ITodoService _todoService;
     private readonly ICheckpointService _checkpointService;
     private readonly IInterventionService _interventionService;
     private readonly ISessionRecoveryService _recoveryService;
@@ -30,6 +34,8 @@ public class SessionController : ControllerBase
         ISessionRepository sessionRepository,
         IMessageRepository messageRepository,
         IAgentRunRepository agentRunRepository,
+        IDiagnosticDataRepository diagnosticDataRepository,
+        ITodoService todoService,
         ICheckpointService checkpointService,
         IInterventionService interventionService,
         ISessionRecoveryService recoveryService,
@@ -40,6 +46,8 @@ public class SessionController : ControllerBase
         _sessionRepository = sessionRepository;
         _messageRepository = messageRepository;
         _agentRunRepository = agentRunRepository;
+        _diagnosticDataRepository = diagnosticDataRepository;
+        _todoService = todoService;
         _checkpointService = checkpointService;
         _interventionService = interventionService;
         _recoveryService = recoveryService;
@@ -121,6 +129,64 @@ public class SessionController : ControllerBase
                 .OrderBy(e => e.Timestamp)
                 .ThenBy(e => e.EventType, StringComparer.Ordinal)
                 .ToList()
+        });
+    }
+
+    [HttpGet("/api/sessions/{sessionId:guid}/diagnosis")]
+    public async Task<IActionResult> GetSessionDiagnosis(Guid sessionId, CancellationToken ct)
+    {
+        var session = await _sessionRepository.GetAsync(sessionId, ct);
+        if (session == null)
+            return NotFound();
+
+        var summary = await _diagnosticDataRepository.GetSummaryAsync(sessionId, sourceType: null, ct);
+        var evidence = await _diagnosticDataRepository.SearchAsync(
+            sessionId,
+            keyword: null,
+            severity: null,
+            sourceType: null,
+            startTime: null,
+            endTime: null,
+            limit: 5,
+            ct);
+
+        var response = MapSessionDiagnosis(sessionId, session, summary, evidence);
+        return Ok(response);
+    }
+
+    [HttpGet("/api/sessions/{sessionId:guid}/tool-invocations")]
+    public async Task<IActionResult> GetSessionToolInvocations(Guid sessionId, CancellationToken ct)
+    {
+        var session = await _sessionRepository.GetAsync(sessionId, ct);
+        if (session == null)
+            return NotFound();
+
+        var agentRuns = await _agentRunRepository.GetBySessionAsync(sessionId, ct);
+        var items = agentRuns
+            .SelectMany(run => run.ToolInvocations.Select(tool => MapToolInvocation(run, tool)))
+            .OrderByDescending(item => item.RequestedAt)
+            .ThenBy(item => item.ToolName, StringComparer.Ordinal)
+            .ToList();
+
+        return Ok(new SessionToolInvocationsResponse
+        {
+            SessionId = sessionId,
+            Items = items
+        });
+    }
+
+    [HttpGet("/api/sessions/{sessionId:guid}/todos")]
+    public async Task<IActionResult> GetSessionTodos(Guid sessionId, CancellationToken ct)
+    {
+        var session = await _sessionRepository.GetAsync(sessionId, ct);
+        if (session == null)
+            return NotFound();
+
+        var todos = await _todoService.GetAsync(sessionId);
+        return Ok(new SessionTodosResponse
+        {
+            SessionId = sessionId,
+            Items = todos.Select(MapTodo).ToList()
         });
     }
 
@@ -351,6 +417,150 @@ public class SessionController : ControllerBase
 
         return firstPart.GetRawText();
     }
+
+    private static SessionDiagnosisResponse MapSessionDiagnosis(
+        Guid sessionId,
+        SreAgent.Repository.Entities.SessionEntity session,
+        DiagnosticSummaryResult diagnosticSummary,
+        IReadOnlyList<SreAgent.Repository.Entities.DiagnosticDataEntity> evidenceRecords)
+    {
+        var jsonHypothesis = ReadStringField(session.Diagnosis, "hypothesis");
+        var hypothesis = string.IsNullOrWhiteSpace(jsonHypothesis)
+            ? (session.DiagnosisSummary ?? "Diagnosis is not available yet.")
+            : jsonHypothesis;
+
+        var confidence = session.Confidence ?? ReadDoubleField(session.Diagnosis, "confidence");
+        var evidence = new List<string>();
+        evidence.AddRange(ReadStringArrayField(session.Diagnosis, "evidence"));
+        evidence.AddRange(evidenceRecords.Select(MapEvidenceRecord));
+
+        var recommendedActions = ReadStringArrayField(session.Diagnosis, "recommendedActions");
+        if (recommendedActions.Count == 0)
+            recommendedActions = ExtractBulletLines(session.DiagnosisSummary);
+
+        return new SessionDiagnosisResponse
+        {
+            SessionId = sessionId,
+            Hypothesis = hypothesis,
+            Confidence = confidence,
+            Evidence = evidence.Where(item => !string.IsNullOrWhiteSpace(item)).Distinct().Take(8).ToList(),
+            RecommendedActions = recommendedActions,
+            TotalRecords = diagnosticSummary.TotalRecords,
+            SeverityBreakdown = diagnosticSummary.BySeverity,
+            SourceBreakdown = diagnosticSummary.BySource,
+            TimeWindowStart = diagnosticSummary.EarliestTimestamp,
+            TimeWindowEnd = diagnosticSummary.LatestTimestamp
+        };
+    }
+
+    private static ToolInvocationSummaryResponse MapToolInvocation(
+        SreAgent.Repository.Entities.AgentRunEntity agentRun,
+        SreAgent.Repository.Entities.ToolInvocationEntity tool)
+    {
+        return new ToolInvocationSummaryResponse
+        {
+            Id = tool.Id.ToString(),
+            AgentRunId = agentRun.Id.ToString(),
+            ToolName = tool.ToolName,
+            Status = tool.Status,
+            ApprovalStatus = tool.ApprovalStatus,
+            ErrorMessage = tool.ErrorMessage,
+            AgentId = agentRun.AgentId,
+            AgentName = agentRun.AgentName,
+            RequestedAt = tool.RequestedAt,
+            CompletedAt = tool.CompletedAt,
+            DurationMs = tool.DurationMs
+        };
+    }
+
+    private static SessionTodoItemResponse MapTodo(TodoItem todo)
+    {
+        return new SessionTodoItemResponse
+        {
+            Id = todo.Id,
+            Content = todo.Content,
+            Status = todo.Status switch
+            {
+                TodoStatus.Pending => "pending",
+                TodoStatus.InProgress => "in_progress",
+                TodoStatus.Completed => "completed",
+                TodoStatus.Cancelled => "cancelled",
+                _ => "pending"
+            },
+            Priority = todo.Priority switch
+            {
+                TodoPriority.Low => "low",
+                TodoPriority.Medium => "medium",
+                TodoPriority.High => "high",
+                _ => "medium"
+            },
+            CreatedAt = todo.CreatedAt,
+            UpdatedAt = todo.UpdatedAt ?? todo.CreatedAt,
+            CompletedAt = todo.CompletedAt
+        };
+    }
+
+    private static string MapEvidenceRecord(SreAgent.Repository.Entities.DiagnosticDataEntity record)
+    {
+        var preview = record.Content.Length <= 120 ? record.Content : $"{record.Content[..120]}...";
+        return $"{record.SourceType}: {preview}";
+    }
+
+    private static double? ReadDoubleField(JsonDocument? jsonDocument, params string[] propertyNames)
+    {
+        if (jsonDocument == null || jsonDocument.RootElement.ValueKind != JsonValueKind.Object)
+            return null;
+
+        foreach (var propertyName in propertyNames)
+        {
+            if (!jsonDocument.RootElement.TryGetProperty(propertyName, out var valueElement))
+                continue;
+
+            if (valueElement.ValueKind == JsonValueKind.Number && valueElement.TryGetDouble(out var value))
+                return value;
+        }
+
+        return null;
+    }
+
+    private static List<string> ReadStringArrayField(JsonDocument? jsonDocument, params string[] propertyNames)
+    {
+        if (jsonDocument == null || jsonDocument.RootElement.ValueKind != JsonValueKind.Object)
+            return [];
+
+        foreach (var propertyName in propertyNames)
+        {
+            if (!jsonDocument.RootElement.TryGetProperty(propertyName, out var valueElement))
+                continue;
+
+            if (valueElement.ValueKind != JsonValueKind.Array)
+                continue;
+
+            return valueElement
+                .EnumerateArray()
+                .Where(item => item.ValueKind == JsonValueKind.String)
+                .Select(item => item.GetString())
+                .Where(item => !string.IsNullOrWhiteSpace(item))
+                .Cast<string>()
+                .ToList();
+        }
+
+        return [];
+    }
+
+    private static List<string> ExtractBulletLines(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return [];
+
+        return text
+            .Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .Where(line => line.StartsWith("- ", StringComparison.Ordinal))
+            .Select(line => line[2..].Trim())
+            .Where(line => !string.IsNullOrWhiteSpace(line))
+            .Take(8)
+            .ToList();
+    }
 }
 
 public class InterventionRequest
@@ -434,4 +644,56 @@ public class TimelineEventResponse
     public string? Detail { get; set; }
     public string? Status { get; set; }
     public string? Actor { get; set; }
+}
+
+public class SessionDiagnosisResponse
+{
+    public Guid SessionId { get; set; }
+    public string Hypothesis { get; set; } = string.Empty;
+    public double? Confidence { get; set; }
+    public List<string> Evidence { get; set; } = [];
+    public List<string> RecommendedActions { get; set; } = [];
+    public int TotalRecords { get; set; }
+    public Dictionary<string, int> SeverityBreakdown { get; set; } = [];
+    public Dictionary<string, int> SourceBreakdown { get; set; } = [];
+    public DateTime? TimeWindowStart { get; set; }
+    public DateTime? TimeWindowEnd { get; set; }
+}
+
+public class SessionToolInvocationsResponse
+{
+    public Guid SessionId { get; set; }
+    public List<ToolInvocationSummaryResponse> Items { get; set; } = [];
+}
+
+public class ToolInvocationSummaryResponse
+{
+    public string Id { get; set; } = string.Empty;
+    public string AgentRunId { get; set; } = string.Empty;
+    public string ToolName { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public string? ApprovalStatus { get; set; }
+    public string? ErrorMessage { get; set; }
+    public string? AgentId { get; set; }
+    public string? AgentName { get; set; }
+    public DateTime RequestedAt { get; set; }
+    public DateTime? CompletedAt { get; set; }
+    public long DurationMs { get; set; }
+}
+
+public class SessionTodosResponse
+{
+    public Guid SessionId { get; set; }
+    public List<SessionTodoItemResponse> Items { get; set; } = [];
+}
+
+public class SessionTodoItemResponse
+{
+    public string Id { get; set; } = string.Empty;
+    public string Content { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public string Priority { get; set; } = string.Empty;
+    public DateTime CreatedAt { get; set; }
+    public DateTime UpdatedAt { get; set; }
+    public DateTime? CompletedAt { get; set; }
 }
