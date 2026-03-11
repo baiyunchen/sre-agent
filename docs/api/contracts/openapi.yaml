@@ -103,6 +103,32 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /api/sessions/{sessionId}:
+    get:
+      tags: [sessions]
+      summary: Get session detail by id
+      parameters:
+        - in: path
+          name: sessionId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Session detail returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionDetailResponse'
+        '404':
+          description: Session not found
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 components:
   schemas:
     AnalyzeRequest:
@@ -184,6 +210,62 @@ components:
           type: integer
         pageSize:
           type: integer
+    SessionDetailResponse:
+      type: object
+      required: [id, status, createdAt, updatedAt, agentSteps]
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        alertId:
+          type: string
+          nullable: true
+        alertName:
+          type: string
+          nullable: true
+        source:
+          type: string
+          nullable: true
+        severity:
+          type: string
+          nullable: true
+        serviceName:
+          type: string
+          nullable: true
+        currentAgentId:
+          type: string
+          nullable: true
+        currentStep:
+          type: integer
+        agentSteps:
+          type: integer
+        diagnosisSummary:
+          type: string
+          nullable: true
+        confidence:
+          type: number
+          format: double
+          nullable: true
+        duration:
+          type: integer
+          nullable: true
+          description: Session duration in seconds
+        createdAt:
+          type: string
+          format: date-time
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
     ErrorResponse:
       type: object
       properties:

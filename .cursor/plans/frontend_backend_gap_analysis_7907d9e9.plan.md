@@ -10,7 +10,7 @@ todos:
     status: done
   - id: backend-schema
     content: 后端数据模型调整：Session 增加 source/severity 字段、定义 Diagnosis schema、新增 ApprovalRule 实体、Todo 持久化
-    status: pending
+    status: in_progress
   - id: backend-api-p0
     content: 后端 P0 API 实现：sessions 列表、session timeline、diagnosis、tool-invocations、todos、send message
     status: pending
@@ -19,7 +19,7 @@ todos:
     status: pending
   - id: frontend-scaffold
     content: 前端项目搭建：从 Figma Make 导出、建立 API 层、安装 TanStack Query、对齐类型定义
-    status: in_progress
+    status: done
   - id: frontend-core
     content: 前端核心页面联调：Sessions + SessionDetail + Dashboard，对接 P0 API + SSE
     status: pending
