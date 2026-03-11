@@ -1,0 +1,25 @@
+---
+description: Mandatory implementation tests and coverage gates
+alwaysApply: true
+---
+
+# 测试与覆盖率门禁
+
+每个任务完成前，必须包含：
+
+- 代码实现
+- 必要单元测试（Unit）
+- 必要集成测试（Integration）
+
+质量门禁：
+
+1. 变更相关模块测试覆盖率 >= 85%
+2. 项目整体覆盖率不能因本次改动下降
+3. 若现有覆盖率不足 85%，本次任务需要补齐缺口或明确拆分补齐子任务并立即进入看板
+
+推荐执行（按仓库现状调整）：
+
+- `dotnet test --collect:"XPlat Code Coverage"`（backend）
+- 前端对应单测与集成测试命令
+
+提交前必须记录测试结论与覆盖率结果到 `docs/13-大型变更任务看板.md`。

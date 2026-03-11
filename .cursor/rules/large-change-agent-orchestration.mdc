@@ -1,0 +1,16 @@
+---
+description: Use dedicated agent and skill for large changes
+alwaysApply: true
+---
+
+# 大型改动执行编排
+
+当需求属于较大改动时，优先采用以下编排：
+
+1. 使用 `feature-delivery` agent 作为总协调者
+2. 按角色顺序调用：`project-manager` -> `product-manager` -> `solution-architect` -> `developer` -> `qa-engineer`
+3. 使用 `large-change-delivery` skill 统一执行顺序和质量门禁
+4. QA 阶段使用 `qa-backend-e2e` 与 `qa-frontend-e2e` skills
+5. 后端链路验证优先调用 `e2e-test` agent
+
+若任一门禁未通过（契约、测试、覆盖率、e2e），任务不得标记为 `done`。

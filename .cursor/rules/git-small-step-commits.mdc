@@ -1,0 +1,26 @@
+---
+description: Enforce small-step git commits after code changes
+alwaysApply: true
+---
+
+# 小步 Git 提交规范
+
+每次完成一个最小可验证改动后，必须立即执行一次小步提交。
+
+提交节奏要求：
+
+1. 每次提交只包含一个清晰意图（单一 Story 子任务）
+2. 提交前必须完成本次改动相关测试（至少最小验证）
+3. 提交后更新 `docs/13-大型变更任务看板.md` 的提交记录
+
+提交信息要求：
+
+- 建议格式：`<type>(<scope>): <story-id> <summary>`
+- 示例：`feat(api): US-012 add alert filter endpoint`
+- 必须体现“为什么做”（业务价值或缺陷修复目的）
+
+安全约束：
+
+- 禁止提交密钥、凭证、`.env` 等敏感文件
+- 禁止将无关变更混入同一次提交
+- 若测试失败，不得提交为完成态

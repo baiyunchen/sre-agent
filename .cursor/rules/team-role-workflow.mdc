@@ -1,0 +1,16 @@
+---
+description: Enforce team-role workflow for large changes
+alwaysApply: true
+---
+
+# 角色化协作流程（大型改动）
+
+当需求为大型改动时，按以下角色顺序推进，不可跳过关键产物：
+
+1. `project-manager`：初始化与维护任务看板
+2. `product-manager`：产出需求文档与 user stories
+3. `solution-architect`：完成架构拆分与 API 契约设计
+4. `developer`：实现代码 + 单测 + 集成测试 + 覆盖率门禁
+5. `qa-engineer`：后端与前端 e2e 验证并给出测试结论
+
+只有在前一角色产物达标后，才能进入下一阶段。

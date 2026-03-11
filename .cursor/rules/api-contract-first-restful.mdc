@@ -1,0 +1,23 @@
+---
+description: Contract-first RESTful API workflow
+alwaysApply: true
+---
+
+# API 契约优先（RESTful）
+
+凡是新增或修改 API，先定义契约，再写实现代码。
+
+必须遵循：
+
+1. 先更新 `docs/api/contracts/openapi.yaml`
+2. 再实现后端接口与前端调用
+3. 最后补齐契约测试与集成验证
+
+契约要求：
+
+- RESTful 资源命名与语义化 HTTP 方法
+- 明确请求/响应 schema、状态码、错误码
+- 字段命名一致，禁止前后端同义不同名
+- 标注与设计稿对应关系（字段、交互、约束）
+
+当需求来源于前端设计稿时，契约必须覆盖设计稿关键交互场景（成功态、空态、错误态）。

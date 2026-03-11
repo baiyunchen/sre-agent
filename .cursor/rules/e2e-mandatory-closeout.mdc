@@ -1,0 +1,27 @@
+---
+description: E2E verification required after each completed task
+alwaysApply: true
+---
+
+# 每任务完成后必须执行 E2E
+
+每个任务从 `in_progress` 变为 `done` 前，必须完成端到端验证。
+
+后端 E2E 最低要求：
+
+- 实际触发 alert（使用测试材料脚本或等效方式）
+- 通过 API 触发分析流程
+- 验证分析结果与链路日志
+
+前端 E2E 最低要求：
+
+- 打开浏览器执行关键用户路径
+- 覆盖核心功能与错误分支
+- 记录关键截图或结论
+
+执行方式：
+
+- 优先使用 `e2e-test` 子代理执行后端链路验证
+- 前端通过浏览器自动化流程执行验证
+
+未完成 E2E 的任务不得标记为 `done`，并需在看板中标记为 `blocked` 或 `in_progress`。

@@ -1,0 +1,67 @@
+openapi: 3.0.3
+info:
+  title: SRE Agent API Contract
+  version: 1.0.0
+  description: >
+    Contract-first API definition. Update this file before implementing any API
+    changes in backend/frontend.
+servers:
+  - url: http://localhost:5099
+tags:
+  - name: sre
+    description: Alert analysis APIs
+paths:
+  /api/sre/analyze:
+    post:
+      tags: [sre]
+      summary: Analyze an incoming alert
+      description: |
+        API contract must align with frontend design requirements.
+        Keep success/empty/error states explicit.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalyzeRequest'
+      responses:
+        '200':
+          description: Analysis completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalyzeResponse'
+        '400':
+          description: Invalid request
+        '500':
+          description: Internal error
+components:
+  schemas:
+    AnalyzeRequest:
+      type: object
+      required: [title, severity, alertTime, affectedService, description]
+      properties:
+        title:
+          type: string
+        severity:
+          type: string
+          enum: [P1, P2, P3]
+        alertTime:
+          type: string
+          format: date-time
+        affectedService:
+          type: string
+        description:
+          type: string
+        additionalInfo:
+          type: string
+    AnalyzeResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        analysis:
+          type: string
+        error:
+          type: string
+          nullable: true

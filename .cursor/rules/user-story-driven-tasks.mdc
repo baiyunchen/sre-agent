@@ -1,0 +1,22 @@
+---
+description: Maintain tasks in user story format
+alwaysApply: true
+---
+
+# User Story 驱动任务管理
+
+`docs/13-大型变更任务看板.md` 中的每个任务都应优先采用 User Story 形式：
+
+- 模板：`作为 <角色>，我希望 <能力>，以便 <业务价值>`
+- 每条 Story 必须包含可验证验收标准（Acceptance Criteria）
+- 验收标准应尽量使用 Given / When / Then 风格
+
+每个 Story 至少包含以下字段：
+
+- Story ID（如 `US-001`）
+- Story 描述（角色/能力/价值）
+- 技术子任务（实现、测试、联调）
+- 验收标准（功能 + 非功能）
+- 完成定义（DoD）
+
+禁止只记录“开发动作”而不写“用户价值”。如果无法描述用户价值，先回到需求澄清再编码。
