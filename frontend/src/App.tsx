@@ -1,14 +1,14 @@
-import { Button } from "@/components/ui/button"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { RouterProvider } from "react-router-dom"
+import { router } from "@/app/routes"
+
+const queryClient = new QueryClient()
 
 function App() {
   return (
-    <div className="flex min-h-svh items-center justify-center">
-      <div className="flex flex-col items-center gap-6">
-        <h1 className="text-4xl font-bold tracking-tight">SRE Agent</h1>
-        <p className="text-muted-foreground">智能 SRE 运维助手</p>
-        <Button>开始使用</Button>
-      </div>
-    </div>
+    <QueryClientProvider client={queryClient}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>
   )
 }
 
