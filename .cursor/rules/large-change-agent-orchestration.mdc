@@ -12,5 +12,6 @@ alwaysApply: true
 3. 使用 `large-change-delivery` skill 统一执行顺序和质量门禁
 4. QA 阶段使用 `qa-backend-e2e` 与 `qa-frontend-e2e` skills
 5. 后端链路验证优先调用 `e2e-test` agent
+6. 每阶段结束后由 `project-manager` 评审文档产物并给出 `GO/NO-GO`
 
-若任一门禁未通过（契约、测试、覆盖率、e2e），任务不得标记为 `done`。
+若任一门禁未通过（文档、契约、测试、覆盖率、e2e），任务不得标记为 `done`。

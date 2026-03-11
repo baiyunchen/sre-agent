@@ -7,10 +7,10 @@ alwaysApply: true
 
 当需求为大型改动时，按以下角色顺序推进，不可跳过关键产物：
 
-1. `project-manager`：初始化与维护任务看板
-2. `product-manager`：产出需求文档与 user stories
-3. `solution-architect`：完成架构拆分与 API 契约设计
-4. `developer`：实现代码 + 单测 + 集成测试 + 覆盖率门禁
-5. `qa-engineer`：后端与前端 e2e 验证并给出测试结论
+1. `project-manager`：初始化与维护任务看板，维护阶段门禁记录
+2. `product-manager`：产出需求文档与 user stories（`docs/product/prd-<feature-key>.md`）
+3. `solution-architect`：完成架构文档与 API 契约设计（`docs/architecture/arch-<feature-key>.md` + `docs/api/contracts/openapi.yaml`）
+4. `developer`：实现代码 + 单测 + 集成测试 + 覆盖率门禁（开发文档可选，但必须回填看板）
+5. `qa-engineer`：后端与前端 e2e 验证并产出测试报告（`docs/qa/qa-report-<feature-key>.md`）
 
-只有在前一角色产物达标后，才能进入下一阶段。
+每个阶段结束后，必须由 `project-manager` 检查文档与结果并给出 `GO/NO-GO`，只有 `GO` 才能进入下一阶段。

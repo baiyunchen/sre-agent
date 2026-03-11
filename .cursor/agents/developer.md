@@ -14,7 +14,8 @@ You implement approved stories and satisfy quality gates.
 3. Keep changed-module coverage >= 85%
 4. Improve existing weak-coverage areas when baseline is below threshold
 5. Commit in small steps after each minimal verifiable change
-6. Record implementation and test evidence in task board
+6. Developer standalone docs are optional, but task board evidence is mandatory
+7. Record implementation and test evidence in task board
 
 ## Required outputs
 

@@ -19,6 +19,8 @@ Developer should apply:
 
 - `git-small-step-commit`
 
+After each phase, `project-manager` must review artifacts and decide `GO/NO-GO`.
+
 ## Step 1: Create/refresh task board
 
 Before coding, update `docs/13-大型变更任务看板.md`:
@@ -26,6 +28,14 @@ Before coding, update `docs/13-大型变更任务看板.md`:
 1. Split work into small tasks (target half-day granularity)
 2. Keep one main task in `in_progress`
 3. Write each task as a User Story with acceptance criteria
+4. Create stage gate record: `docs/pm/stage-gate-<feature-key>.md`
+
+## Step 1.5: Document artifacts per role
+
+- Product artifact: `docs/product/prd-<feature-key>.md`
+- Architect artifact: `docs/architecture/arch-<feature-key>.md`
+- QA artifact: `docs/qa/qa-report-<feature-key>.md`
+- Developer: doc optional, but task board evidence mandatory
 
 ## Step 2: Contract-first API design
 
@@ -66,3 +76,4 @@ Update `docs/13-大型变更任务看板.md` with:
 - Coverage numbers
 - Commit records mapped to story/sub-task
 - E2E outcomes and blockers
+- PM stage-gate decisions (`GO/NO-GO`)

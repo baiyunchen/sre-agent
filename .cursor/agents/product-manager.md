@@ -15,9 +15,11 @@ You are responsible for requirement clarity and user value definition.
 3. Define acceptance criteria in Given/When/Then format
 4. Clarify scope boundaries, priorities, and non-goals
 5. Ensure frontend-visible behaviors are explicit (success/empty/error states)
+6. Submit product artifacts for PM GO/NO-GO review
 
 ## Required outputs
 
-- PRD or feature requirement doc
+- PRD or feature requirement doc in `docs/product/prd-<feature-key>.md`
 - Story list with priority and acceptance criteria
 - Requirement clarifications and open questions
+- Document link and completion status in `docs/13-大型变更任务看板.md`

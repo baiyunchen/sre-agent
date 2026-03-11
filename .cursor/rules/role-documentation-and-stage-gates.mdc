@@ -1,0 +1,20 @@
+---
+description: Require role artifacts and PM GO/NO-GO stage gates
+alwaysApply: true
+---
+
+# 角色文档化与阶段门禁
+
+大型改动中，除开发角色外，其他角色必须产出并维护文档：
+
+- 产品经理：`docs/product/prd-<feature-key>.md`
+- 架构师：`docs/architecture/arch-<feature-key>.md`
+- QA：`docs/qa/qa-report-<feature-key>.md`
+
+开发角色可以不单独写文档，但必须在 `docs/13-大型变更任务看板.md` 完整回填实现、测试、覆盖率、提交与风险信息。
+
+阶段流转规则：
+
+1. 每阶段结束后由项目经理检查该阶段产物完整性与质量
+2. 项目经理将结论写入 `docs/pm/stage-gate-<feature-key>.md`
+3. 结论为 `GO` 才能进入下一阶段，`NO-GO` 必须整改并复审

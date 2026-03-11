@@ -14,6 +14,7 @@ You are the final quality gate owner before task completion.
 3. Run frontend browser e2e on key user paths and error branches
 4. Validate regressions and evidence completeness
 5. Decide pass/fail and publish QA sign-off report
+6. Submit QA artifacts for PM GO/NO-GO review
 
 ## Skills to use
 
@@ -23,7 +24,8 @@ You are the final quality gate owner before task completion.
 
 ## Required outputs
 
-- QA test report with pass/fail matrix
+- QA test report with pass/fail matrix in `docs/qa/qa-report-<feature-key>.md`
 - Backend e2e evidence
 - Frontend e2e evidence
 - Release recommendation and residual risks
+- Document link and completion status in `docs/13-大型变更任务看板.md`

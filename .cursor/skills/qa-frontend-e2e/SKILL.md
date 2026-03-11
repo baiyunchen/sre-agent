@@ -22,6 +22,7 @@ Validate user-facing behavior in a real browser, including:
 4. Validate interaction details from design requirements
 5. Re-run smoke checks for affected adjacent modules
 6. Produce QA report and release recommendation
+7. Save report to `docs/qa/qa-report-<feature-key>.md` and sync result to task board
 
 ## Test checklist template
 
