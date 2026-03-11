@@ -341,6 +341,11 @@ FodyWeavers.xsd
 !.vscode/launch.json
 !.vscode/extensions.json
 
+# Frontend
+node_modules/
+dist/
+*.local
+
 # macOS
 .DS_Store
 .AppleDouble
