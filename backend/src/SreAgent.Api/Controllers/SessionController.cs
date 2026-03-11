@@ -83,27 +83,14 @@ public class SessionController : ControllerBase
     }
 
     [HttpGet("{sessionId:guid}")]
+    [HttpGet("/api/sessions/{sessionId:guid}")]
     public async Task<IActionResult> GetSession(Guid sessionId, CancellationToken ct)
     {
         var session = await _sessionRepository.GetAsync(sessionId, ct);
         if (session == null)
             return NotFound();
 
-        return Ok(new
-        {
-            session.Id,
-            session.Status,
-            session.AlertId,
-            session.AlertName,
-            session.CurrentAgentId,
-            session.CurrentStep,
-            session.DiagnosisSummary,
-            session.Confidence,
-            session.CreatedAt,
-            session.StartedAt,
-            session.CompletedAt,
-            session.UpdatedAt
-        });
+        return Ok(MapSessionDetail(session));
     }
 
     [HttpPost("{sessionId:guid}/interrupt")]
@@ -207,12 +194,41 @@ public class SessionController : ControllerBase
             AlertName = session.AlertName,
             AlertId = session.AlertId,
             ServiceName = session.ServiceName,
-            Source = ReadStringField(session.AlertData, "source", "alertSource"),
-            Severity = ReadStringField(session.AlertData, "severity", "alertSeverity"),
+            Source = session.AlertSource ?? ReadStringField(session.AlertData, "source", "alertSource"),
+            Severity = session.AlertSeverity ?? ReadStringField(session.AlertData, "severity", "alertSeverity"),
             CreatedAt = session.CreatedAt,
             UpdatedAt = session.UpdatedAt,
             Duration = duration,
             AgentSteps = session.CurrentStep
+        };
+    }
+
+    private static SessionDetailResponse MapSessionDetail(SreAgent.Repository.Entities.SessionEntity session)
+    {
+        var now = DateTime.UtcNow;
+        int? duration = session.StartedAt.HasValue
+            ? (int)Math.Max(0, ((session.CompletedAt ?? now) - session.StartedAt.Value).TotalSeconds)
+            : null;
+
+        return new SessionDetailResponse
+        {
+            Id = session.Id,
+            Status = session.Status,
+            AlertId = session.AlertId,
+            AlertName = session.AlertName,
+            Source = session.AlertSource ?? ReadStringField(session.AlertData, "source", "alertSource"),
+            Severity = session.AlertSeverity ?? ReadStringField(session.AlertData, "severity", "alertSeverity"),
+            ServiceName = session.ServiceName,
+            CurrentAgentId = session.CurrentAgentId,
+            CurrentStep = session.CurrentStep,
+            AgentSteps = session.CurrentStep,
+            DiagnosisSummary = session.DiagnosisSummary,
+            Confidence = session.Confidence,
+            Duration = duration,
+            CreatedAt = session.CreatedAt,
+            StartedAt = session.StartedAt,
+            CompletedAt = session.CompletedAt,
+            UpdatedAt = session.UpdatedAt
         };
     }
 
@@ -279,4 +295,25 @@ public class SessionSummaryDto
     public DateTime UpdatedAt { get; set; }
     public int? Duration { get; set; }
     public int? AgentSteps { get; set; }
+}
+
+public class SessionDetailResponse
+{
+    public Guid Id { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public string? AlertId { get; set; }
+    public string? AlertName { get; set; }
+    public string? Source { get; set; }
+    public string? Severity { get; set; }
+    public string? ServiceName { get; set; }
+    public string? CurrentAgentId { get; set; }
+    public int CurrentStep { get; set; }
+    public int AgentSteps { get; set; }
+    public string? DiagnosisSummary { get; set; }
+    public double? Confidence { get; set; }
+    public int? Duration { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime? StartedAt { get; set; }
+    public DateTime? CompletedAt { get; set; }
+    public DateTime UpdatedAt { get; set; }
 }

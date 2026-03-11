@@ -15,6 +15,8 @@ public class SessionConfiguration : IEntityTypeConfiguration<SessionEntity>
         builder.Property(e => e.Status).HasColumnName("status").HasMaxLength(50).IsRequired();
         builder.Property(e => e.AlertId).HasColumnName("alert_id").HasMaxLength(255);
         builder.Property(e => e.AlertName).HasColumnName("alert_name").HasMaxLength(255);
+        builder.Property(e => e.AlertSource).HasColumnName("alert_source").HasMaxLength(100);
+        builder.Property(e => e.AlertSeverity).HasColumnName("alert_severity").HasMaxLength(50);
         builder.Property(e => e.AlertData).HasColumnName("alert_data").HasColumnType("jsonb");
         builder.Property(e => e.ServiceName).HasColumnName("service_name").HasMaxLength(255);
         builder.Property(e => e.ServiceMetadata).HasColumnName("service_metadata").HasColumnType("jsonb");

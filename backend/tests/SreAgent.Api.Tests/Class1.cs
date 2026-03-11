@@ -75,6 +75,60 @@ public class SessionControllerTests
         payload.Items[0].Duration.Should().BeGreaterThan(0);
     }
 
+    [Fact]
+    public async Task GetSession_ShouldReturnNotFound_WhenSessionDoesNotExist()
+    {
+        var sessionRepository = new Mock<ISessionRepository>();
+        sessionRepository
+            .Setup(r => r.GetAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((SessionEntity?)null);
+
+        var controller = CreateController(sessionRepository.Object);
+        var result = await controller.GetSession(Guid.NewGuid(), CancellationToken.None);
+
+        result.Should().BeOfType<NotFoundResult>();
+    }
+
+    [Fact]
+    public async Task GetSession_ShouldReturnDetailPayload_WithSourceAndSeverityFields()
+    {
+        var sessionRepository = new Mock<ISessionRepository>();
+        var session = new SessionEntity
+        {
+            Id = Guid.NewGuid(),
+            Status = "Completed",
+            AlertId = "alert-xyz",
+            AlertName = "DB latency high",
+            AlertSource = "Prometheus",
+            AlertSeverity = "Warning",
+            ServiceName = "db-service",
+            CurrentAgentId = "SreCoordinator",
+            CurrentStep = 4,
+            DiagnosisSummary = "network jitter",
+            Confidence = 0.82,
+            CreatedAt = DateTime.UtcNow.AddMinutes(-20),
+            StartedAt = DateTime.UtcNow.AddMinutes(-18),
+            CompletedAt = DateTime.UtcNow.AddMinutes(-10),
+            UpdatedAt = DateTime.UtcNow.AddMinutes(-9)
+        };
+
+        sessionRepository
+            .Setup(r => r.GetAsync(session.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(session);
+
+        var controller = CreateController(sessionRepository.Object);
+        var result = await controller.GetSession(session.Id, CancellationToken.None);
+
+        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
+        var payload = okResult.Value.Should().BeOfType<SessionDetailResponse>().Subject;
+
+        payload.Id.Should().Be(session.Id);
+        payload.Source.Should().Be("Prometheus");
+        payload.Severity.Should().Be("Warning");
+        payload.AgentSteps.Should().Be(4);
+        payload.Duration.Should().BeGreaterThan(0);
+    }
+
     private static SessionController CreateController(ISessionRepository sessionRepository)
     {
         return new SessionController(

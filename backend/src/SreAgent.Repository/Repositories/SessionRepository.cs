@@ -74,7 +74,8 @@ public class SessionRepository : ISessionRepository
         {
             var source = query.Source.Trim();
             var sourceFiltered = (await dataQuery.ToListAsync(ct))
-                .Where(s => MatchSource(s.AlertData, source))
+                .Where(s => string.Equals(s.AlertSource, source, StringComparison.OrdinalIgnoreCase)
+                            || MatchSource(s.AlertData, source))
                 .ToList();
 
             var sourceTotal = sourceFiltered.Count;

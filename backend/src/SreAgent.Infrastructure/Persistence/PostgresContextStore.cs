@@ -150,11 +150,33 @@ public class PostgresContextStore : IContextStore
         if (metadata.TryGetValue("alert_id", out var alertId))
             session.AlertId = alertId?.ToString();
 
+        if (metadata.TryGetValue("alert_source", out var alertSource))
+            session.AlertSource = alertSource?.ToString();
+
+        if (metadata.TryGetValue("alert_severity", out var alertSeverity))
+            session.AlertSeverity = alertSeverity?.ToString();
+
         if (metadata.TryGetValue("service_name", out var serviceName))
             session.ServiceName = serviceName?.ToString();
 
         if (metadata.TryGetValue("alert_data", out var alertData) && alertData != null)
             session.AlertData = JsonSerializer.SerializeToDocument(alertData);
+
+        // Backfill source/severity from alert_data when dedicated fields are absent.
+        if (session.AlertData != null && session.AlertData.RootElement.ValueKind == JsonValueKind.Object)
+        {
+            if (string.IsNullOrWhiteSpace(session.AlertSource)
+                && TryReadString(session.AlertData.RootElement, "source", out var sourceFromJson))
+            {
+                session.AlertSource = sourceFromJson;
+            }
+
+            if (string.IsNullOrWhiteSpace(session.AlertSeverity)
+                && TryReadString(session.AlertData.RootElement, "severity", out var severityFromJson))
+            {
+                session.AlertSeverity = severityFromJson;
+            }
+        }
 
         if (metadata.TryGetValue("status", out var status))
             session.Status = status?.ToString() ?? session.Status;
@@ -176,6 +198,19 @@ public class PostgresContextStore : IContextStore
 
         if (metadata.TryGetValue("confidence", out var conf) && conf is double confVal)
             session.Confidence = confVal;
+    }
+
+    private static bool TryReadString(JsonElement jsonElement, string propertyName, out string? value)
+    {
+        value = null;
+        if (!jsonElement.TryGetProperty(propertyName, out var property))
+            return false;
+
+        if (property.ValueKind != JsonValueKind.String)
+            return false;
+
+        value = property.GetString();
+        return !string.IsNullOrWhiteSpace(value);
     }
 }
 

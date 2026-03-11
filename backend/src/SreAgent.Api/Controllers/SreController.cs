@@ -167,15 +167,21 @@ public class SreController : ControllerBase
 
     private Dictionary<string, object> BuildAlertMetadata(AnalyzeRequest request, Guid sessionId, DateTime startedAt)
     {
+        var alertSource = InferAlertSource(request.AdditionalInfo);
+        var alertSeverity = NormalizeSeverity(request.Severity);
+
         return new Dictionary<string, object>
         {
             ["alert_name"] = request.Title,
             ["alert_id"] = $"alert-{sessionId:N}"[..36],
             ["service_name"] = request.AffectedService,
+            ["alert_source"] = alertSource,
+            ["alert_severity"] = alertSeverity,
             ["alert_data"] = new
             {
                 title = request.Title,
-                severity = request.Severity,
+                source = alertSource,
+                severity = alertSeverity,
                 alertTime = request.AlertTime,
                 affectedService = request.AffectedService,
                 description = request.Description,
@@ -184,6 +190,35 @@ public class SreController : ControllerBase
             ["status"] = "Running",
             ["started_at"] = startedAt,
             ["current_agent_id"] = _agent.Id
+        };
+    }
+
+    private static string InferAlertSource(string? additionalInfo)
+    {
+        if (string.IsNullOrWhiteSpace(additionalInfo))
+            return "CloudWatch";
+
+        if (additionalInfo.Contains("Prometheus", StringComparison.OrdinalIgnoreCase))
+            return "Prometheus";
+
+        if (additionalInfo.Contains("Slack", StringComparison.OrdinalIgnoreCase))
+            return "Slack Manual";
+
+        return "CloudWatch";
+    }
+
+    private static string NormalizeSeverity(string? severity)
+    {
+        if (string.IsNullOrWhiteSpace(severity))
+            return "Warning";
+
+        return severity.Trim().ToUpperInvariant() switch
+        {
+            "P0" => "Critical",
+            "P1" => "Critical",
+            "P2" => "Warning",
+            "P3" => "Info",
+            _ => severity
         };
     }
 

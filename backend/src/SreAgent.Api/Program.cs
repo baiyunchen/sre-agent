@@ -38,6 +38,16 @@ try
     // Add services to the container.
     builder.Services.AddControllers();
     builder.Services.AddOpenApi();
+    builder.Services.AddCors(options =>
+    {
+        options.AddPolicy("FrontendDev", policy =>
+        {
+            policy
+                .WithOrigins("http://localhost:4173")
+                .AllowAnyHeader()
+                .AllowAnyMethod();
+        });
+    });
 
     // 注册持久化服务
     var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
@@ -147,6 +157,7 @@ try
     }
 
     app.UseHttpsRedirection();
+    app.UseCors("FrontendDev");
 
     app.MapControllers();
 

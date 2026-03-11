@@ -9,6 +9,8 @@ public class SessionEntity
 
     public string? AlertId { get; set; }
     public string? AlertName { get; set; }
+    public string? AlertSource { get; set; }
+    public string? AlertSeverity { get; set; }
     public JsonDocument? AlertData { get; set; }
 
     public string? ServiceName { get; set; }

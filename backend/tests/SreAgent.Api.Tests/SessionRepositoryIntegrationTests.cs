@@ -263,6 +263,8 @@ public class SessionRepositoryIntegrationTests
             Status = status,
             AlertId = $"alert-{Guid.NewGuid():N}",
             AlertName = $"{marker}-alert",
+            AlertSource = source,
+            AlertSeverity = severity,
             ServiceName = $"{marker}-service",
             AlertData = JsonDocument.Parse(
                 $$"""{"source":"{{source}}","severity":"{{severity}}","marker":"{{marker}}"}"""),
