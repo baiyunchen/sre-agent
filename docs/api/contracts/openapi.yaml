@@ -155,6 +155,84 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /api/sessions/{sessionId}/diagnosis:
+    get:
+      tags: [sessions]
+      summary: Get structured diagnosis for a session
+      parameters:
+        - in: path
+          name: sessionId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Session diagnosis returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionDiagnosisResponse'
+        '404':
+          description: Session not found
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/sessions/{sessionId}/tool-invocations:
+    get:
+      tags: [sessions]
+      summary: Get all tool invocations in a session
+      parameters:
+        - in: path
+          name: sessionId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Tool invocations returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionToolInvocationsResponse'
+        '404':
+          description: Session not found
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/sessions/{sessionId}/todos:
+    get:
+      tags: [sessions]
+      summary: Get todo list in a session
+      parameters:
+        - in: path
+          name: sessionId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Session todos returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionTodosResponse'
+        '404':
+          description: Session not found
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 components:
   schemas:
     AnalyzeRequest:
@@ -326,6 +404,125 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/TimelineEvent'
+    SessionDiagnosisResponse:
+      type: object
+      required: [sessionId, hypothesis, evidence, recommendedActions]
+      properties:
+        sessionId:
+          type: string
+          format: uuid
+        hypothesis:
+          type: string
+        confidence:
+          type: number
+          format: double
+          nullable: true
+        evidence:
+          type: array
+          items:
+            type: string
+        recommendedActions:
+          type: array
+          items:
+            type: string
+        totalRecords:
+          type: integer
+        severityBreakdown:
+          type: object
+          additionalProperties:
+            type: integer
+        sourceBreakdown:
+          type: object
+          additionalProperties:
+            type: integer
+        timeWindowStart:
+          type: string
+          format: date-time
+          nullable: true
+        timeWindowEnd:
+          type: string
+          format: date-time
+          nullable: true
+    ToolInvocationSummary:
+      type: object
+      required: [id, toolName, status, requestedAt]
+      properties:
+        id:
+          type: string
+        agentRunId:
+          type: string
+        toolName:
+          type: string
+        status:
+          type: string
+        approvalStatus:
+          type: string
+          nullable: true
+        errorMessage:
+          type: string
+          nullable: true
+        agentId:
+          type: string
+          nullable: true
+        agentName:
+          type: string
+          nullable: true
+        requestedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        durationMs:
+          type: integer
+          format: int64
+    SessionToolInvocationsResponse:
+      type: object
+      required: [sessionId, items]
+      properties:
+        sessionId:
+          type: string
+          format: uuid
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ToolInvocationSummary'
+    SessionTodoItem:
+      type: object
+      required: [id, content, status, priority, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+        content:
+          type: string
+        status:
+          type: string
+          enum: [pending, in_progress, completed, cancelled]
+        priority:
+          type: string
+          enum: [low, medium, high]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+    SessionTodosResponse:
+      type: object
+      required: [sessionId, items]
+      properties:
+        sessionId:
+          type: string
+          format: uuid
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SessionTodoItem'
     ErrorResponse:
       type: object
       properties:
