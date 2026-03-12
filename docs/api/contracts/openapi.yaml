@@ -233,6 +233,44 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /api/sessions/{sessionId}/messages:
+    post:
+      tags: [sessions]
+      summary: Send a follow-up message in an existing session
+      parameters:
+        - in: path
+          name: sessionId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SessionMessageRequest'
+      responses:
+        '200':
+          description: Session message processed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionMessageResponse'
+        '404':
+          description: Session not found
+        '409':
+          description: Session cannot accept new messages in current status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 components:
   schemas:
     AnalyzeRequest:
@@ -523,6 +561,40 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/SessionTodoItem'
+    SessionMessageRequest:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+          minLength: 1
+    SessionMessageResponse:
+      type: object
+      required: [sessionId, isSuccess, tokenUsage]
+      properties:
+        sessionId:
+          type: string
+          format: uuid
+        output:
+          type: string
+          nullable: true
+        isSuccess:
+          type: boolean
+        error:
+          type: string
+          nullable: true
+        tokenUsage:
+          $ref: '#/components/schemas/SessionMessageTokenUsage'
+    SessionMessageTokenUsage:
+      type: object
+      required: [promptTokens, completionTokens, totalTokens]
+      properties:
+        promptTokens:
+          type: integer
+        completionTokens:
+          type: integer
+        totalTokens:
+          type: integer
     ErrorResponse:
       type: object
       properties:
