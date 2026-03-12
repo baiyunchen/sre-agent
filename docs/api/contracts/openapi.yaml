@@ -316,6 +316,32 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /api/dashboard/activities:
+    get:
+      tags: [dashboard]
+      summary: Get recent dashboard activities
+      parameters:
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Dashboard activities returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardActivitiesResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 components:
   schemas:
     AnalyzeRequest:
@@ -686,6 +712,37 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/DashboardActiveSessionSummary'
+        total:
+          type: integer
+    DashboardActivityItem:
+      type: object
+      required: [id, sessionId, eventType, occurredAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        sessionId:
+          type: string
+          format: uuid
+        eventType:
+          type: string
+        description:
+          type: string
+          nullable: true
+        actor:
+          type: string
+          nullable: true
+        occurredAt:
+          type: string
+          format: date-time
+    DashboardActivitiesResponse:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/DashboardActivityItem'
         total:
           type: integer
     ErrorResponse:
