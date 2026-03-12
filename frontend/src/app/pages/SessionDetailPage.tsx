@@ -138,7 +138,7 @@ export function SessionDetailPage() {
                   <CardDescription>Real-time agent activity and conversation</CardDescription>
                 </CardHeader>
                 <CardContent className="flex min-h-0 flex-1 flex-col">
-                  <div ref={scrollRef} className="flex-1 overflow-y-auto pr-2">
+                  <div ref={scrollRef} className="scrollbar-thin flex-1 overflow-y-auto pr-1">
                     {timelineQuery.isLoading && (
                       <p className="py-8 text-center text-sm text-muted-foreground">
                         Loading timeline...
@@ -193,7 +193,7 @@ export function SessionDetailPage() {
                       <TabsTrigger value="todos">Todos</TabsTrigger>
                     </TabsList>
                   </CardHeader>
-                  <CardContent className="min-h-0 flex-1 overflow-y-auto">
+                  <CardContent className="scrollbar-thin min-h-0 flex-1 overflow-y-auto">
                     <TabsContent value="diagnosis" className="mt-0">
                       <DiagnosisPanel
                         isLoading={diagnosisQuery.isLoading}
@@ -310,7 +310,7 @@ function TimelineItem({
               </button>
             </CollapsibleTrigger>
             <CollapsibleContent className="mt-2">
-              <div className="max-h-80 overflow-y-auto rounded-md border bg-white/60 p-2.5">
+              <div className="scrollbar-thin max-h-80 overflow-y-auto rounded-md border bg-white/60 p-2.5">
                 <MarkdownContent
                   content={event.detail ?? ""}
                   className="text-sm leading-relaxed text-muted-foreground"
