@@ -128,21 +128,30 @@
     }
 }
 
-/* Always-visible thin scrollbar for panels that need scroll affordance */
+/* Always-visible scrollbar for panels that need scroll affordance.
+   Use ::-webkit-scrollbar for Chromium/Safari (most users).
+   Firefox fallback: scrollbar-width + scrollbar-color. */
 .scrollbar-thin {
-  scrollbar-width: thin;
-  scrollbar-color: oklch(0.8 0 0) transparent;
+  overflow-y: scroll !important;
 }
 .scrollbar-thin::-webkit-scrollbar {
-  width: 6px;
+  width: 8px;
 }
 .scrollbar-thin::-webkit-scrollbar-track {
-  background: transparent;
+  background: #f0f0f0;
+  border-radius: 4px;
 }
 .scrollbar-thin::-webkit-scrollbar-thumb {
-  background-color: oklch(0.8 0 0);
-  border-radius: 3px;
+  background-color: #aaa;
+  border-radius: 4px;
+  min-height: 40px;
 }
 .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-  background-color: oklch(0.65 0 0);
+  background-color: #666;
+}
+@supports not selector(::-webkit-scrollbar) {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: #999 #f0f0f0;
+  }
 }

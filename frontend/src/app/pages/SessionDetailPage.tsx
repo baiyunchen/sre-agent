@@ -128,11 +128,11 @@ export function SessionDetailPage() {
         </div>
 
         {/* Main Content */}
-        <div className="min-h-0 flex-1 px-6 pb-6">
-          <div className="grid h-full gap-6 lg:grid-cols-3">
+        <div className="min-h-0 flex-1 overflow-hidden px-6 pb-6">
+          <div className="grid h-full grid-rows-[1fr] gap-6 lg:grid-cols-3">
             {/* Left Column - Timeline */}
-            <div className="flex h-full flex-col lg:col-span-2">
-              <Card className="flex h-full flex-col">
+            <div className="flex min-h-0 flex-col lg:col-span-2">
+              <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
                 <CardHeader className="shrink-0 pb-3">
                   <CardTitle>Agent Execution</CardTitle>
                   <CardDescription>Real-time agent activity and conversation</CardDescription>
@@ -183,9 +183,9 @@ export function SessionDetailPage() {
             </div>
 
             {/* Right Column - Tabs */}
-            <div className="h-full">
-              <Card className="flex h-full flex-col">
-                <Tabs defaultValue="diagnosis" className="flex h-full flex-col">
+            <div className="min-h-0">
+              <Card className="flex h-full min-h-0 flex-col overflow-hidden">
+                <Tabs defaultValue="diagnosis" className="flex min-h-0 flex-1 flex-col">
                   <CardHeader className="shrink-0">
                     <TabsList className="grid w-full grid-cols-3">
                       <TabsTrigger value="diagnosis">Diagnosis</TabsTrigger>
