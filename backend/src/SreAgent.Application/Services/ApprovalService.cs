@@ -9,23 +9,30 @@ public interface IApprovalService
     Task<ApprovalDecisionResult> ApproveAsync(Guid sessionId, string approverId, string? comment, CancellationToken ct = default);
     Task<ApprovalDecisionResult> RejectAsync(Guid sessionId, string approverId, string? comment, CancellationToken ct = default);
     Task<(IReadOnlyList<InterventionEntity> Items, int Total)> GetHistoryAsync(int limit, CancellationToken ct = default);
+    Task<IReadOnlyList<ApprovalRuleEntity>> GetRulesAsync(CancellationToken ct = default);
+    Task<ApprovalRuleEntity> CreateRuleAsync(string toolName, string ruleType, string? createdBy, CancellationToken ct = default);
+    Task<bool> DeleteRuleAsync(Guid id, CancellationToken ct = default);
 }
 
 public class ApprovalService : IApprovalService
 {
     private static readonly IReadOnlyCollection<string> ApprovalHistoryTypes = ["Approve", "Reject"];
+    private static readonly HashSet<string> ValidRuleTypes = ["always-allow", "always-deny"];
 
     private readonly ISessionRepository _sessionRepository;
     private readonly IInterventionRepository _interventionRepository;
+    private readonly IApprovalRuleRepository _approvalRuleRepository;
     private readonly IAuditService _auditService;
 
     public ApprovalService(
         ISessionRepository sessionRepository,
         IInterventionRepository interventionRepository,
+        IApprovalRuleRepository approvalRuleRepository,
         IAuditService auditService)
     {
         _sessionRepository = sessionRepository;
         _interventionRepository = interventionRepository;
+        _approvalRuleRepository = approvalRuleRepository;
         _auditService = auditService;
     }
 
@@ -124,6 +131,36 @@ public class ApprovalService : IApprovalService
     public Task<(IReadOnlyList<InterventionEntity> Items, int Total)> GetHistoryAsync(int limit, CancellationToken ct = default)
     {
         return _interventionRepository.GetByTypesAsync(ApprovalHistoryTypes, limit, ct);
+    }
+
+    public Task<IReadOnlyList<ApprovalRuleEntity>> GetRulesAsync(CancellationToken ct = default)
+    {
+        return _approvalRuleRepository.GetAllAsync(ct);
+    }
+
+    public async Task<ApprovalRuleEntity> CreateRuleAsync(string toolName, string ruleType, string? createdBy, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(toolName))
+            throw new ArgumentException("toolName cannot be empty");
+
+        if (!ValidRuleTypes.Contains(ruleType))
+            throw new ArgumentException($"ruleType must be one of: {string.Join(", ", ValidRuleTypes)}");
+
+        var rule = new ApprovalRuleEntity
+        {
+            Id = Guid.NewGuid(),
+            ToolName = toolName.Trim(),
+            RuleType = ruleType,
+            CreatedBy = createdBy?.Trim(),
+            CreatedAt = DateTime.UtcNow
+        };
+
+        return await _approvalRuleRepository.CreateAsync(rule, ct);
+    }
+
+    public Task<bool> DeleteRuleAsync(Guid id, CancellationToken ct = default)
+    {
+        return _approvalRuleRepository.DeleteAsync(id, ct);
     }
 }
 

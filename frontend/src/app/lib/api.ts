@@ -3,6 +3,9 @@ import type {
   ApprovalDecisionResponse,
   ApprovalHistoryResponse,
   ApprovalPendingListResponse,
+  ApprovalRulesListResponse,
+  CreateApprovalRuleRequest,
+  ApprovalRuleItem,
   DashboardActivitiesResponse,
   DashboardActiveSessionsResponse,
   DashboardStatsResponse,
@@ -252,4 +255,51 @@ export async function fetchApprovalHistory(limit = 50): Promise<ApprovalHistoryR
   }
 
   return (await response.json()) as ApprovalHistoryResponse
+}
+
+export async function fetchApprovalRules(): Promise<ApprovalRulesListResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/approvals/rules`)
+  if (!response.ok) {
+    const fallbackMessage = `获取审批规则失败: ${response.status}`
+    const errorPayload = (await response.json().catch(() => null)) as
+      | { error?: string }
+      | null
+    throw new Error(errorPayload?.error ?? fallbackMessage)
+  }
+
+  return (await response.json()) as ApprovalRulesListResponse
+}
+
+export async function createApprovalRule(
+  payload: CreateApprovalRuleRequest,
+): Promise<ApprovalRuleItem> {
+  const response = await fetch(`${API_BASE_URL}/api/approvals/rules`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  })
+
+  if (!response.ok) {
+    const fallbackMessage = `创建审批规则失败: ${response.status}`
+    const errorPayload = (await response.json().catch(() => null)) as
+      | { error?: string }
+      | null
+    throw new Error(errorPayload?.error ?? fallbackMessage)
+  }
+
+  return (await response.json()) as ApprovalRuleItem
+}
+
+export async function deleteApprovalRule(id: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/api/approvals/rules/${id}`, {
+    method: "DELETE",
+  })
+
+  if (!response.ok && response.status !== 204) {
+    const fallbackMessage = `删除审批规则失败: ${response.status}`
+    const errorPayload = (await response.json().catch(() => null)) as
+      | { error?: string }
+      | null
+    throw new Error(errorPayload?.error ?? fallbackMessage)
+  }
 }

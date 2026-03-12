@@ -205,3 +205,22 @@ export interface ApprovalHistoryResponse {
   items: ApprovalHistoryItem[]
   total: number
 }
+
+export interface ApprovalRuleItem {
+  id: string
+  toolName: string
+  ruleType: "always-allow" | "always-deny"
+  createdBy: string | null
+  createdAt: string
+}
+
+export interface ApprovalRulesListResponse {
+  items: ApprovalRuleItem[]
+  total: number
+}
+
+export interface CreateApprovalRuleRequest {
+  toolName: string
+  ruleType: "always-allow" | "always-deny"
+  createdBy?: string
+}

@@ -4,9 +4,10 @@ import {
   Clock,
   CheckCircle2,
   XCircle,
-  AlertTriangle,
   Shield,
   Filter,
+  Plus,
+  Trash2,
 } from "lucide-react"
 import {
   Card,
@@ -38,6 +39,9 @@ import { Label } from "@/components/ui/label"
 import {
   useApproveSession,
   useApprovalHistory,
+  useApprovalRules,
+  useCreateApprovalRule,
+  useDeleteApprovalRule,
   usePendingApprovals,
   useRejectSession,
 } from "@/app/lib/hooks/useApprovals"
@@ -52,11 +56,16 @@ export function ApprovalsPage() {
   const [approverId, setApproverId] = useState("oncall-user")
   const [comment, setComment] = useState("")
   const [historyFilter, setHistoryFilter] = useState<string>("all")
+  const [newRuleToolName, setNewRuleToolName] = useState("")
+  const [newRuleType, setNewRuleType] = useState<"always-allow" | "always-deny">("always-allow")
 
   const pendingQuery = usePendingApprovals(20)
   const historyQuery = useApprovalHistory(50)
   const approveMutation = useApproveSession()
   const rejectMutation = useRejectSession()
+  const rulesQuery = useApprovalRules()
+  const createRuleMutation = useCreateApprovalRule()
+  const deleteRuleMutation = useDeleteApprovalRule()
 
   const historyItems = historyQuery.data?.items ?? []
   const filteredHistory =
@@ -141,6 +150,15 @@ export function ApprovalsPage() {
               )}
             </TabsTrigger>
             <TabsTrigger value="history">History</TabsTrigger>
+            <TabsTrigger value="rules" className="gap-2">
+              <Shield className="size-4" />
+              Rules
+              {(rulesQuery.data?.total ?? 0) > 0 && (
+                <Badge variant="outline" className="ml-1 text-xs">
+                  {rulesQuery.data?.total}
+                </Badge>
+              )}
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="pending" className="flex flex-col gap-4">
@@ -302,6 +320,138 @@ export function ApprovalsPage() {
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground">
                             {formatTimestamp(item.intervenedAt)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="rules" className="flex flex-col gap-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Permanent Approval Rules</CardTitle>
+                <CardDescription>
+                  Rules that auto-approve or auto-deny specific tool executions
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-4">
+                <div className="flex items-end gap-3">
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor="rule-tool">Tool Name</Label>
+                    <Input
+                      id="rule-tool"
+                      value={newRuleToolName}
+                      onChange={(e) => setNewRuleToolName(e.target.value)}
+                      placeholder="e.g., kubectl_delete_pod"
+                      className="w-64"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor="rule-type">Rule Type</Label>
+                    <Select
+                      value={newRuleType}
+                      onValueChange={(v) =>
+                        setNewRuleType(v as "always-allow" | "always-deny")
+                      }
+                    >
+                      <SelectTrigger className="w-[160px]" id="rule-type">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="always-allow">Always Allow</SelectItem>
+                        <SelectItem value="always-deny">Always Deny</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button
+                    onClick={async () => {
+                      if (!newRuleToolName.trim()) return
+                      await createRuleMutation.mutateAsync({
+                        toolName: newRuleToolName.trim(),
+                        ruleType: newRuleType,
+                        createdBy: approverId || undefined,
+                      })
+                      setNewRuleToolName("")
+                    }}
+                    disabled={
+                      !newRuleToolName.trim() || createRuleMutation.isPending
+                    }
+                  >
+                    <Plus className="size-4" />
+                    Add Rule
+                  </Button>
+                </div>
+
+                {rulesQuery.isLoading && (
+                  <p className="text-sm text-muted-foreground">Loading rules...</p>
+                )}
+                {rulesQuery.error instanceof Error && (
+                  <p className="text-sm text-destructive">
+                    {rulesQuery.error.message}
+                  </p>
+                )}
+                {!rulesQuery.isLoading &&
+                  !(rulesQuery.error instanceof Error) &&
+                  (rulesQuery.data?.items.length ?? 0) === 0 && (
+                    <p className="py-8 text-center text-sm text-muted-foreground">
+                      No approval rules configured yet.
+                    </p>
+                  )}
+                {(rulesQuery.data?.items.length ?? 0) > 0 && (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Tool Name</TableHead>
+                        <TableHead>Rule Type</TableHead>
+                        <TableHead>Created By</TableHead>
+                        <TableHead>Created At</TableHead>
+                        <TableHead className="w-16" />
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {(rulesQuery.data?.items ?? []).map((rule) => (
+                        <TableRow key={rule.id}>
+                          <TableCell className="font-mono text-sm">
+                            {rule.toolName}
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              variant={
+                                rule.ruleType === "always-allow"
+                                  ? "default"
+                                  : "destructive"
+                              }
+                            >
+                              {rule.ruleType === "always-allow" && (
+                                <CheckCircle2 className="mr-1 size-3" />
+                              )}
+                              {rule.ruleType === "always-deny" && (
+                                <XCircle className="mr-1 size-3" />
+                              )}
+                              {rule.ruleType}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-sm">
+                            {rule.createdBy ?? "-"}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {formatTimestamp(rule.createdAt)}
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() =>
+                                deleteRuleMutation.mutateAsync(rule.id)
+                              }
+                              disabled={deleteRuleMutation.isPending}
+                            >
+                              <Trash2 className="size-4 text-destructive" />
+                            </Button>
                           </TableCell>
                         </TableRow>
                       ))}

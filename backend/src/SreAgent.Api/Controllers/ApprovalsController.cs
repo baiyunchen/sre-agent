@@ -114,6 +114,59 @@ public class ApprovalsController : ControllerBase
             Total = total
         });
     }
+
+    [HttpGet("/api/approvals/rules")]
+    public async Task<IActionResult> GetRules(CancellationToken ct = default)
+    {
+        var rules = await _approvalService.GetRulesAsync(ct);
+        return Ok(new ApprovalRulesListResponse
+        {
+            Items = rules.Select(r => new ApprovalRuleItem
+            {
+                Id = r.Id,
+                ToolName = r.ToolName,
+                RuleType = r.RuleType,
+                CreatedBy = r.CreatedBy,
+                CreatedAt = r.CreatedAt
+            }).ToList(),
+            Total = rules.Count
+        });
+    }
+
+    [HttpPost("/api/approvals/rules")]
+    public async Task<IActionResult> CreateRule(
+        [FromBody] CreateApprovalRuleRequest request,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(request.ToolName))
+            return BadRequest(new { error = "toolName cannot be empty" });
+
+        try
+        {
+            var rule = await _approvalService.CreateRuleAsync(
+                request.ToolName, request.RuleType, request.CreatedBy, ct);
+            return Created($"/api/approvals/rules/{rule.Id}", new ApprovalRuleItem
+            {
+                Id = rule.Id,
+                ToolName = rule.ToolName,
+                RuleType = rule.RuleType,
+                CreatedBy = rule.CreatedBy,
+                CreatedAt = rule.CreatedAt
+            });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpDelete("/api/approvals/rules/{id:guid}")]
+    public async Task<IActionResult> DeleteRule(Guid id, CancellationToken ct)
+    {
+        var deleted = await _approvalService.DeleteRuleAsync(id, ct);
+        if (!deleted) return NotFound();
+        return NoContent();
+    }
 }
 
 public class ApprovalDecisionRequest
@@ -158,4 +211,26 @@ public class ApprovalHistoryItem
     public string? Reason { get; set; }
     public string? IntervenedBy { get; set; }
     public DateTime IntervenedAt { get; set; }
+}
+
+public class ApprovalRulesListResponse
+{
+    public List<ApprovalRuleItem> Items { get; set; } = [];
+    public int Total { get; set; }
+}
+
+public class ApprovalRuleItem
+{
+    public Guid Id { get; set; }
+    public string ToolName { get; set; } = string.Empty;
+    public string RuleType { get; set; } = string.Empty;
+    public string? CreatedBy { get; set; }
+    public DateTime CreatedAt { get; set; }
+}
+
+public class CreateApprovalRuleRequest
+{
+    public string ToolName { get; set; } = string.Empty;
+    public string RuleType { get; set; } = string.Empty;
+    public string? CreatedBy { get; set; }
 }

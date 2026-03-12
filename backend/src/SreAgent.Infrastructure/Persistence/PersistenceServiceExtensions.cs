@@ -28,6 +28,7 @@ public static class PersistenceServiceExtensions
         services.AddScoped<ICheckpointRepository, CheckpointRepository>();
         services.AddScoped<IInterventionRepository, InterventionRepository>();
         services.AddScoped<IAuditLogRepository, AuditLogRepository>();
+        services.AddScoped<IApprovalRuleRepository, ApprovalRuleRepository>();
 
         // Register application services
         services.AddScoped<IDiagnosticDataService, DiagnosticDataService>();

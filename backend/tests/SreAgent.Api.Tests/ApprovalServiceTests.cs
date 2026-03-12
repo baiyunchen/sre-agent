@@ -48,7 +48,7 @@ public class ApprovalServiceTests
         var interventionRepository = new Mock<IInterventionRepository>();
         var auditService = new Mock<IAuditService>();
 
-        var service = CreateService(sessionRepository.Object, interventionRepository.Object, auditService.Object);
+        var service = CreateService(sessionRepository.Object, interventionRepository.Object, auditService: auditService.Object);
         var result = await service.ApproveAsync(sessionId, "approver", "ok", CancellationToken.None);
 
         result.Status.Should().Be("Running");
@@ -104,7 +104,7 @@ public class ApprovalServiceTests
         var interventionRepository = new Mock<IInterventionRepository>();
         var auditService = new Mock<IAuditService>();
 
-        var service = CreateService(sessionRepository.Object, interventionRepository.Object, auditService.Object);
+        var service = CreateService(sessionRepository.Object, interventionRepository.Object, auditService: auditService.Object);
         var result = await service.RejectAsync(sessionId, "approver", "not safe", CancellationToken.None);
 
         result.Status.Should().Be("Cancelled");
@@ -143,14 +143,85 @@ public class ApprovalServiceTests
         items.Should().HaveCount(1);
     }
 
+    [Fact]
+    public async Task GetRulesAsync_ShouldDelegateToRepository()
+    {
+        var rules = new List<ApprovalRuleEntity>
+        {
+            new() { Id = Guid.NewGuid(), ToolName = "kubectl_delete_pod", RuleType = "always-allow" }
+        };
+
+        var ruleRepository = new Mock<IApprovalRuleRepository>();
+        ruleRepository
+            .Setup(r => r.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(rules);
+
+        var service = CreateService(approvalRuleRepository: ruleRepository.Object);
+        var result = await service.GetRulesAsync(CancellationToken.None);
+
+        result.Should().HaveCount(1);
+        result[0].ToolName.Should().Be("kubectl_delete_pod");
+    }
+
+    [Fact]
+    public async Task CreateRuleAsync_ShouldCreateWithValidInput()
+    {
+        var ruleRepository = new Mock<IApprovalRuleRepository>();
+        ruleRepository
+            .Setup(r => r.CreateAsync(It.IsAny<ApprovalRuleEntity>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ApprovalRuleEntity rule, CancellationToken _) => rule);
+
+        var service = CreateService(approvalRuleRepository: ruleRepository.Object);
+        var result = await service.CreateRuleAsync("kubectl_delete_pod", "always-allow", "admin", CancellationToken.None);
+
+        result.ToolName.Should().Be("kubectl_delete_pod");
+        result.RuleType.Should().Be("always-allow");
+        result.CreatedBy.Should().Be("admin");
+    }
+
+    [Fact]
+    public async Task CreateRuleAsync_ShouldThrow_WhenToolNameEmpty()
+    {
+        var service = CreateService();
+        var act = async () => await service.CreateRuleAsync("", "always-allow", null, CancellationToken.None);
+
+        await act.Should().ThrowAsync<ArgumentException>();
+    }
+
+    [Fact]
+    public async Task CreateRuleAsync_ShouldThrow_WhenRuleTypeInvalid()
+    {
+        var service = CreateService();
+        var act = async () => await service.CreateRuleAsync("tool", "invalid-type", null, CancellationToken.None);
+
+        await act.Should().ThrowAsync<ArgumentException>();
+    }
+
+    [Fact]
+    public async Task DeleteRuleAsync_ShouldDelegateToRepository()
+    {
+        var ruleId = Guid.NewGuid();
+        var ruleRepository = new Mock<IApprovalRuleRepository>();
+        ruleRepository
+            .Setup(r => r.DeleteAsync(ruleId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var service = CreateService(approvalRuleRepository: ruleRepository.Object);
+        var result = await service.DeleteRuleAsync(ruleId, CancellationToken.None);
+
+        result.Should().BeTrue();
+    }
+
     private static ApprovalService CreateService(
         ISessionRepository? sessionRepository = null,
         IInterventionRepository? interventionRepository = null,
+        IApprovalRuleRepository? approvalRuleRepository = null,
         IAuditService? auditService = null)
     {
         return new ApprovalService(
             sessionRepository ?? Mock.Of<ISessionRepository>(),
             interventionRepository ?? Mock.Of<IInterventionRepository>(),
+            approvalRuleRepository ?? Mock.Of<IApprovalRuleRepository>(),
             auditService ?? Mock.Of<IAuditService>());
     }
 }

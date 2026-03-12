@@ -13,6 +13,7 @@ public class AppDbContext : DbContext
     public DbSet<InterventionEntity> Interventions => Set<InterventionEntity>();
     public DbSet<AuditLogEntity> AuditLogs => Set<AuditLogEntity>();
     public DbSet<DiagnosticDataEntity> DiagnosticData => Set<DiagnosticDataEntity>();
+    public DbSet<ApprovalRuleEntity> ApprovalRules => Set<ApprovalRuleEntity>();
 
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
     {
