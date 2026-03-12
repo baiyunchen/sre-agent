@@ -342,6 +342,20 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /api/events/stream:
+    get:
+      tags: [dashboard]
+      summary: Subscribe dashboard realtime SSE stream
+      description: |
+        SSE stream endpoint that pushes `dashboard.snapshot` events.
+        Each event includes the latest stats, active sessions and recent activities.
+      responses:
+        '200':
+          description: SSE stream opened
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/DashboardSnapshotEvent'
 components:
   schemas:
     AnalyzeRequest:
@@ -745,6 +759,22 @@ components:
             $ref: '#/components/schemas/DashboardActivityItem'
         total:
           type: integer
+    DashboardSnapshotEvent:
+      type: object
+      required: [eventType, generatedAt, stats, activeSessions, activities]
+      properties:
+        eventType:
+          type: string
+          enum: [dashboard.snapshot]
+        generatedAt:
+          type: string
+          format: date-time
+        stats:
+          $ref: '#/components/schemas/DashboardStatsResponse'
+        activeSessions:
+          $ref: '#/components/schemas/DashboardActiveSessionsResponse'
+        activities:
+          $ref: '#/components/schemas/DashboardActivitiesResponse'
     ErrorResponse:
       type: object
       properties:
