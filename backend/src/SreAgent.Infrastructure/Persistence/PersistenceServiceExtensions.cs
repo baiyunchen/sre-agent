@@ -33,6 +33,7 @@ public static class PersistenceServiceExtensions
         services.AddScoped<IDiagnosticDataService, DiagnosticDataService>();
         services.AddScoped<ICheckpointService, CheckpointService>();
         services.AddScoped<IInterventionService, InterventionService>();
+        services.AddScoped<IApprovalService, ApprovalService>();
         services.AddScoped<ISessionRecoveryService, SessionRecoveryService>();
         services.AddScoped<IAuditService, AuditService>();
         services.AddScoped<IExecutionTracker, PersistenceExecutionTracker>();

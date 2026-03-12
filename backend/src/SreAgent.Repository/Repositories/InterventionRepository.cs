@@ -7,6 +7,10 @@ public interface IInterventionRepository
 {
     Task<InterventionEntity> CreateAsync(InterventionEntity intervention, CancellationToken ct = default);
     Task<IReadOnlyList<InterventionEntity>> GetBySessionAsync(Guid sessionId, CancellationToken ct = default);
+    Task<(IReadOnlyList<InterventionEntity> Items, int Total)> GetByTypesAsync(
+        IReadOnlyCollection<string> types,
+        int limit = 50,
+        CancellationToken ct = default);
 }
 
 public class InterventionRepository : IInterventionRepository
@@ -31,5 +35,24 @@ public class InterventionRepository : IInterventionRepository
             .Where(i => i.SessionId == sessionId)
             .OrderByDescending(i => i.IntervenedAt)
             .ToListAsync(ct);
+    }
+
+    public async Task<(IReadOnlyList<InterventionEntity> Items, int Total)> GetByTypesAsync(
+        IReadOnlyCollection<string> types,
+        int limit = 50,
+        CancellationToken ct = default)
+    {
+        if (types.Count == 0)
+            return ([], 0);
+
+        var normalizedLimit = Math.Clamp(limit, 1, 200);
+        var query = _context.Interventions
+            .AsNoTracking()
+            .Where(i => types.Contains(i.Type))
+            .OrderByDescending(i => i.IntervenedAt);
+
+        var total = await query.CountAsync(ct);
+        var items = await query.Take(normalizedLimit).ToListAsync(ct);
+        return (items, total);
     }
 }

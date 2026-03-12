@@ -1,4 +1,8 @@
 import type {
+  ApprovalDecisionRequest,
+  ApprovalDecisionResponse,
+  ApprovalHistoryResponse,
+  ApprovalPendingListResponse,
   DashboardActivitiesResponse,
   DashboardActiveSessionsResponse,
   DashboardStatsResponse,
@@ -176,4 +180,76 @@ export async function fetchDashboardActivities(
   }
 
   return (await response.json()) as DashboardActivitiesResponse
+}
+
+export async function fetchPendingApprovals(limit = 20): Promise<ApprovalPendingListResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/approvals/pending?limit=${limit}`)
+  if (!response.ok) {
+    const fallbackMessage = `获取待审批列表失败: ${response.status}`
+    const errorPayload = (await response.json().catch(() => null)) as
+      | { error?: string }
+      | null
+    throw new Error(errorPayload?.error ?? fallbackMessage)
+  }
+
+  return (await response.json()) as ApprovalPendingListResponse
+}
+
+export async function approveSession(
+  sessionId: string,
+  payload: ApprovalDecisionRequest,
+): Promise<ApprovalDecisionResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/approvals/${sessionId}/approve`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  })
+
+  if (!response.ok) {
+    const fallbackMessage = `审批通过失败: ${response.status}`
+    const errorPayload = (await response.json().catch(() => null)) as
+      | { error?: string }
+      | null
+    throw new Error(errorPayload?.error ?? fallbackMessage)
+  }
+
+  return (await response.json()) as ApprovalDecisionResponse
+}
+
+export async function rejectSession(
+  sessionId: string,
+  payload: ApprovalDecisionRequest,
+): Promise<ApprovalDecisionResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/approvals/${sessionId}/reject`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  })
+
+  if (!response.ok) {
+    const fallbackMessage = `审批拒绝失败: ${response.status}`
+    const errorPayload = (await response.json().catch(() => null)) as
+      | { error?: string }
+      | null
+    throw new Error(errorPayload?.error ?? fallbackMessage)
+  }
+
+  return (await response.json()) as ApprovalDecisionResponse
+}
+
+export async function fetchApprovalHistory(limit = 50): Promise<ApprovalHistoryResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/approvals/history?limit=${limit}`)
+  if (!response.ok) {
+    const fallbackMessage = `获取审批历史失败: ${response.status}`
+    const errorPayload = (await response.json().catch(() => null)) as
+      | { error?: string }
+      | null
+    throw new Error(errorPayload?.error ?? fallbackMessage)
+  }
+
+  return (await response.json()) as ApprovalHistoryResponse
 }

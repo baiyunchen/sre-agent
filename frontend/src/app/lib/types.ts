@@ -167,3 +167,41 @@ export interface DashboardSnapshotEvent {
   activeSessions: DashboardActiveSessionsResponse
   activities: DashboardActivitiesResponse
 }
+
+export interface ApprovalPendingItem {
+  sessionId: string
+  alertName: string | null
+  serviceName: string | null
+  status: string
+  updatedAt: string
+}
+
+export interface ApprovalPendingListResponse {
+  items: ApprovalPendingItem[]
+  total: number
+}
+
+export interface ApprovalDecisionRequest {
+  approverId: string
+  comment?: string
+}
+
+export interface ApprovalDecisionResponse {
+  sessionId: string
+  status: string
+  message: string
+}
+
+export interface ApprovalHistoryItem {
+  id: string
+  sessionId: string
+  action: "Approve" | "Reject"
+  reason: string | null
+  intervenedBy: string | null
+  intervenedAt: string
+}
+
+export interface ApprovalHistoryResponse {
+  items: ApprovalHistoryItem[]
+  total: number
+}
