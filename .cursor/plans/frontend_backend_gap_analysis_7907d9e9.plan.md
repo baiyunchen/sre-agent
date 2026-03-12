@@ -16,7 +16,7 @@ todos:
     status: done
   - id: backend-api-p1
     content: 后端 P1 API 实现：dashboard stats/activities/active-sessions、SSE 端点、approval CRUD、tools/agents 注册表
-    status: pending
+    status: in_progress
   - id: frontend-scaffold
     content: 前端项目搭建：从 Figma Make 导出、建立 API 层、安装 TanStack Query、对齐类型定义
     status: done

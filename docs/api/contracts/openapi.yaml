@@ -12,6 +12,8 @@ tags:
     description: Alert analysis APIs
   - name: sessions
     description: Session query APIs
+  - name: dashboard
+    description: Dashboard aggregation APIs
 paths:
   /api/sre/analyze:
     post:
@@ -265,6 +267,49 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/dashboard/stats:
+    get:
+      tags: [dashboard]
+      summary: Get dashboard key statistics
+      responses:
+        '200':
+          description: Dashboard stats returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardStatsResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/dashboard/active-sessions:
+    get:
+      tags: [dashboard]
+      summary: Get active sessions list for dashboard
+      parameters:
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 10
+      responses:
+        '200':
+          description: Active sessions returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardActiveSessionsResponse'
         '400':
           description: Invalid request
           content:
@@ -594,6 +639,54 @@ components:
         completionTokens:
           type: integer
         totalTokens:
+          type: integer
+    DashboardStatsResponse:
+      type: object
+      required: [totalSessionsToday, autoResolutionRate, avgProcessingTimeSeconds, pendingApprovals]
+      properties:
+        totalSessionsToday:
+          type: integer
+        autoResolutionRate:
+          type: number
+          format: double
+          description: Percent value in range [0,100]
+        avgProcessingTimeSeconds:
+          type: integer
+        pendingApprovals:
+          type: integer
+    DashboardActiveSessionSummary:
+      type: object
+      required: [id, status, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        alertName:
+          type: string
+          nullable: true
+        serviceName:
+          type: string
+          nullable: true
+        status:
+          type: string
+        currentStep:
+          type: integer
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+    DashboardActiveSessionsResponse:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/DashboardActiveSessionSummary'
+        total:
           type: integer
     ErrorResponse:
       type: object
