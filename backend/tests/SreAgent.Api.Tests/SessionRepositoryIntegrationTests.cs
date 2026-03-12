@@ -241,6 +241,68 @@ public class SessionRepositoryIntegrationTests
         }
     }
 
+    [Fact]
+    public async Task DashboardQueries_ShouldReturnStatsAndActiveSessions()
+    {
+        var marker = $"repo-it-{Guid.NewGuid():N}";
+        var ids = new List<Guid>();
+
+        await using var dbContext = CreateDbContext();
+        if (!await dbContext.Database.CanConnectAsync())
+            return;
+
+        await dbContext.Database.MigrateAsync();
+        var repository = new SessionRepository(dbContext);
+
+        var now = DateTime.UtcNow;
+        var startOfDay = now.Date;
+        var baselineStats = await repository.GetDashboardStatsAsync(startOfDay);
+
+        var sessions = new[]
+        {
+            CreateSession(marker, "Running", "CloudWatch", "Warning", startOfDay.AddHours(1)),
+            new SessionEntity
+            {
+                Id = Guid.NewGuid(),
+                Status = "Completed",
+                AlertId = $"alert-{Guid.NewGuid():N}",
+                AlertName = $"{marker}-completed",
+                AlertSource = "CloudWatch",
+                AlertSeverity = "Critical",
+                ServiceName = $"{marker}-service",
+                CreatedAt = startOfDay.AddHours(2),
+                StartedAt = startOfDay.AddHours(2),
+                CompletedAt = startOfDay.AddHours(2).AddSeconds(120),
+                UpdatedAt = startOfDay.AddHours(2).AddSeconds(120)
+            },
+            CreateSession(marker, "WaitingApproval", "CloudWatch", "Warning", startOfDay.AddHours(3)),
+            CreateSession(marker, "Completed", "CloudWatch", "Warning", startOfDay.AddDays(-1).AddHours(10))
+        };
+
+        ids.AddRange(sessions.Select(s => s.Id));
+        await dbContext.Sessions.AddRangeAsync(sessions);
+        await dbContext.SaveChangesAsync();
+
+        try
+        {
+            var stats = await repository.GetDashboardStatsAsync(startOfDay);
+            stats.TotalSessionsToday.Should().BeGreaterThanOrEqualTo(baselineStats.TotalSessionsToday + 3);
+            stats.PendingApprovals.Should().BeGreaterThanOrEqualTo(baselineStats.PendingApprovals + 1);
+            stats.AvgProcessingTimeSeconds.Should().BeGreaterThanOrEqualTo(120);
+
+            var (activeItems, activeTotal) = await repository.GetActiveSessionsAsync(10);
+            activeTotal.Should().BeGreaterThanOrEqualTo(2);
+            activeItems.Should().Contain(item => item.Status == "Running" && item.AlertName == $"{marker}-alert");
+            activeItems.Should().Contain(item => item.Status == "WaitingApproval");
+        }
+        finally
+        {
+            var toDelete = await dbContext.Sessions.Where(s => ids.Contains(s.Id)).ToListAsync();
+            dbContext.Sessions.RemoveRange(toDelete);
+            await dbContext.SaveChangesAsync();
+        }
+    }
+
     private static AppDbContext CreateDbContext()
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()

@@ -1,18 +1,85 @@
 import { SectionCard } from "@/app/layout/AppLayout"
+import { useDashboardActiveSessions, useDashboardStats } from "@/app/lib/hooks/useDashboard"
+
+function formatDuration(seconds: number): string {
+  if (seconds <= 0) {
+    return "0s"
+  }
+
+  if (seconds < 60) {
+    return `${seconds}s`
+  }
+
+  const minutes = Math.floor(seconds / 60)
+  const remainSeconds = seconds % 60
+  return `${minutes}m ${remainSeconds}s`
+}
 
 export function DashboardPage() {
+  const statsQuery = useDashboardStats()
+  const activeSessionsQuery = useDashboardActiveSessions(8)
+
+  const stats = statsQuery.data
+
   return (
     <div className="space-y-4">
       <h2 className="text-2xl font-bold">Dashboard</h2>
       <p className="text-sm text-muted-foreground">
         基于 Figma 设计稿的页面骨架，后续将对接 dashboard stats/activities/active-sessions API。
       </p>
+
+      {statsQuery.error instanceof Error && (
+        <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {statsQuery.error.message}
+        </p>
+      )}
+
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <SectionCard title="Total Sessions Today">--</SectionCard>
-        <SectionCard title="Auto-Resolution Rate">--</SectionCard>
-        <SectionCard title="Avg Processing Time">--</SectionCard>
-        <SectionCard title="Pending Approvals">--</SectionCard>
+        <SectionCard title="Total Sessions Today">
+          <p className="text-2xl font-semibold">
+            {statsQuery.isLoading ? "--" : (stats?.totalSessionsToday ?? 0)}
+          </p>
+        </SectionCard>
+        <SectionCard title="Auto-Resolution Rate">
+          <p className="text-2xl font-semibold">
+            {statsQuery.isLoading ? "--" : `${(stats?.autoResolutionRate ?? 0).toFixed(1)}%`}
+          </p>
+        </SectionCard>
+        <SectionCard title="Avg Processing Time">
+          <p className="text-2xl font-semibold">
+            {statsQuery.isLoading
+              ? "--"
+              : formatDuration(stats?.avgProcessingTimeSeconds ?? 0)}
+          </p>
+        </SectionCard>
+        <SectionCard title="Pending Approvals">
+          <p className="text-2xl font-semibold">
+            {statsQuery.isLoading ? "--" : (stats?.pendingApprovals ?? 0)}
+          </p>
+        </SectionCard>
       </div>
+
+      <SectionCard title="Active Sessions">
+        {activeSessionsQuery.isLoading && (
+          <p className="text-sm text-muted-foreground">加载活跃会话中...</p>
+        )}
+        {activeSessionsQuery.error instanceof Error && (
+          <p className="text-sm text-destructive">{activeSessionsQuery.error.message}</p>
+        )}
+        {!activeSessionsQuery.isLoading &&
+          !(activeSessionsQuery.error instanceof Error) &&
+          (activeSessionsQuery.data?.items.length ?? 0) === 0 && (
+            <p className="text-sm text-muted-foreground">当前无活跃会话。</p>
+          )}
+        {(activeSessionsQuery.data?.items ?? []).map((session) => (
+          <div key={session.id} className="mb-2 rounded-md border p-2 text-sm">
+            <p className="font-medium">{session.alertName ?? session.id}</p>
+            <p className="text-xs text-muted-foreground">
+              {session.serviceName ?? "-"} · {session.status} · Step {session.currentStep}
+            </p>
+          </div>
+        ))}
+      </SectionCard>
     </div>
   )
 }

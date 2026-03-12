@@ -123,3 +123,25 @@ export interface SessionTodosResponse {
   sessionId: string
   items: SessionTodoItem[]
 }
+
+export interface DashboardStatsResponse {
+  totalSessionsToday: number
+  autoResolutionRate: number
+  avgProcessingTimeSeconds: number
+  pendingApprovals: number
+}
+
+export interface DashboardActiveSessionSummary {
+  id: string
+  alertName: string | null
+  serviceName: string | null
+  status: string
+  currentStep: number
+  startedAt: string | null
+  updatedAt: string
+}
+
+export interface DashboardActiveSessionsResponse {
+  items: DashboardActiveSessionSummary[]
+  total: number
+}

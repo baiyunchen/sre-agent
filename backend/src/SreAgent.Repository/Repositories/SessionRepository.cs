@@ -10,6 +10,8 @@ public interface ISessionRepository
     Task<SessionEntity> CreateAsync(SessionEntity session, CancellationToken ct = default);
     Task UpdateAsync(SessionEntity session, CancellationToken ct = default);
     Task<(IReadOnlyList<SessionEntity> Items, int Total)> ListAsync(SessionListQuery query, CancellationToken ct = default);
+    Task<DashboardStatsResult> GetDashboardStatsAsync(DateTime fromUtc, CancellationToken ct = default);
+    Task<(IReadOnlyList<SessionEntity> Items, int Total)> GetActiveSessionsAsync(int limit, CancellationToken ct = default);
     Task<IReadOnlyList<SessionEntity>> GetByStatusAsync(string status, CancellationToken ct = default);
     Task<IReadOnlyList<SessionEntity>> GetByAlertAsync(string alertId, CancellationToken ct = default);
 }
@@ -94,6 +96,57 @@ public class SessionRepository : ISessionRepository
             .Where(s => s.Status == status)
             .OrderByDescending(s => s.CreatedAt)
             .ToListAsync(ct);
+    }
+
+    public async Task<DashboardStatsResult> GetDashboardStatsAsync(DateTime fromUtc, CancellationToken ct = default)
+    {
+        var sessionsToday = _context.Sessions
+            .AsNoTracking()
+            .Where(s => s.CreatedAt >= fromUtc);
+
+        var totalSessionsToday = await sessionsToday.CountAsync(ct);
+        var completedSessionsToday = await sessionsToday.CountAsync(s => s.Status == "Completed", ct);
+        var pendingApprovals = await _context.Sessions
+            .AsNoTracking()
+            .CountAsync(s => s.Status == "WaitingApproval", ct);
+
+        var durationRows = await sessionsToday
+            .Where(s => s.StartedAt.HasValue && s.CompletedAt.HasValue)
+            .Select(s => new { s.StartedAt, s.CompletedAt })
+            .ToListAsync(ct);
+
+        var avgProcessingTimeSeconds = durationRows.Count == 0
+            ? 0
+            : (int)Math.Round(durationRows.Average(row =>
+                (row.CompletedAt!.Value - row.StartedAt!.Value).TotalSeconds));
+
+        var autoResolutionRate = totalSessionsToday == 0
+            ? 0
+            : Math.Round(completedSessionsToday * 100.0 / totalSessionsToday, 2);
+
+        return new DashboardStatsResult
+        {
+            TotalSessionsToday = totalSessionsToday,
+            AutoResolutionRate = autoResolutionRate,
+            AvgProcessingTimeSeconds = avgProcessingTimeSeconds,
+            PendingApprovals = pendingApprovals
+        };
+    }
+
+    public async Task<(IReadOnlyList<SessionEntity> Items, int Total)> GetActiveSessionsAsync(int limit, CancellationToken ct = default)
+    {
+        var normalizedLimit = Math.Clamp(limit, 1, 50);
+        var activeQuery = _context.Sessions
+            .AsNoTracking()
+            .Where(s => s.Status == "Running" || s.Status == "WaitingApproval");
+
+        var total = await activeQuery.CountAsync(ct);
+        var items = await activeQuery
+            .OrderByDescending(s => s.UpdatedAt)
+            .Take(normalizedLimit)
+            .ToListAsync(ct);
+
+        return (items, total);
     }
 
     public async Task<IReadOnlyList<SessionEntity>> GetByAlertAsync(string alertId, CancellationToken ct = default)

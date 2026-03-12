@@ -1,4 +1,6 @@
 import type {
+  DashboardActiveSessionsResponse,
+  DashboardStatsResponse,
   SessionListResponse,
   SessionDiagnosisResponse,
   SessionMessageRequest,
@@ -126,4 +128,32 @@ export async function fetchSessionTodos(
     ...payload,
     items: payload.items ?? ([] as SessionTodoItem[]),
   }
+}
+
+export async function fetchDashboardStats(): Promise<DashboardStatsResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/dashboard/stats`)
+  if (!response.ok) {
+    const fallbackMessage = `获取 Dashboard 统计失败: ${response.status}`
+    const errorPayload = (await response.json().catch(() => null)) as
+      | { error?: string }
+      | null
+    throw new Error(errorPayload?.error ?? fallbackMessage)
+  }
+
+  return (await response.json()) as DashboardStatsResponse
+}
+
+export async function fetchDashboardActiveSessions(
+  limit = 10,
+): Promise<DashboardActiveSessionsResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/dashboard/active-sessions?limit=${limit}`)
+  if (!response.ok) {
+    const fallbackMessage = `获取活跃会话失败: ${response.status}`
+    const errorPayload = (await response.json().catch(() => null)) as
+      | { error?: string }
+      | null
+    throw new Error(errorPayload?.error ?? fallbackMessage)
+  }
+
+  return (await response.json()) as DashboardActiveSessionsResponse
 }
