@@ -50,6 +50,7 @@ import {
   useSessionToolInvocations,
 } from "@/app/lib/hooks/useSessionDetailData"
 import { useSessionMessage } from "@/app/lib/hooks/useSessionMessage"
+import { MarkdownContent } from "@/app/components/MarkdownContent"
 import type { TimelineEvent as TimelineEventType, SessionTodoItem } from "@/app/lib/types"
 
 function formatDate(value: string | null | undefined): string {
@@ -236,12 +237,15 @@ function TimelineItem({
 }) {
   const type = event.eventType
 
-  if (type === "message" && event.actor === "user") {
+  if (type === "message" && event.actor?.toLowerCase() === "user") {
     return (
       <div className="flex justify-end py-1.5">
         <div className="flex max-w-[75%] items-start gap-2">
           <div className="rounded-2xl rounded-br-sm bg-blue-600 px-3.5 py-2 text-white">
-            <p className="text-sm leading-relaxed">{event.detail ?? event.title}</p>
+            <MarkdownContent
+              content={event.detail ?? event.title}
+              className="text-sm leading-relaxed text-white [&_strong]:text-white [&_h3]:text-white [&_h4]:text-white [&_h5]:text-white [&_p]:mb-1 [&_p:last-child]:mb-0"
+            />
             <p className="mt-1 text-[10px] text-blue-200">{formatDate(event.timestamp)}</p>
           </div>
           <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-blue-100">
@@ -252,7 +256,7 @@ function TimelineItem({
     )
   }
 
-  if (type === "message" && event.actor !== "user") {
+  if (type === "message" && event.actor?.toLowerCase() !== "user") {
     return (
       <div className="flex justify-start py-1.5">
         <div className="flex max-w-[75%] items-start gap-2">
@@ -260,7 +264,10 @@ function TimelineItem({
             <Bot className="size-3.5 text-gray-700" />
           </div>
           <div className="rounded-2xl rounded-bl-sm bg-gray-100 px-3.5 py-2">
-            <p className="text-sm leading-relaxed">{event.detail ?? event.title}</p>
+            <MarkdownContent
+              content={event.detail ?? event.title}
+              className="text-sm leading-relaxed [&_p]:mb-1 [&_p:last-child]:mb-0"
+            />
             <p className="mt-1 text-[10px] text-muted-foreground">
               {formatDate(event.timestamp)}
             </p>
@@ -303,8 +310,11 @@ function TimelineItem({
               </button>
             </CollapsibleTrigger>
             <CollapsibleContent className="mt-2">
-              <div className="rounded-md border bg-white/60 p-2.5 text-sm leading-relaxed text-muted-foreground">
-                {event.detail}
+              <div className="max-h-80 overflow-y-auto rounded-md border bg-white/60 p-2.5">
+                <MarkdownContent
+                  content={event.detail ?? ""}
+                  className="text-sm leading-relaxed text-muted-foreground"
+                />
               </div>
             </CollapsibleContent>
           </Collapsible>
@@ -332,16 +342,27 @@ function DiagnosisPanel({
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
           <span className="text-sm font-medium">Confidence</span>
-          <span className="text-2xl font-bold">{data.confidence ?? "-"}%</span>
+          <span className="text-2xl font-bold">
+            {data.confidence != null ? `${data.confidence}%` : "N/A"}
+          </span>
         </div>
-        <Progress value={data.confidence ?? 0} className="h-3" />
+        {data.confidence != null && (
+          <Progress value={data.confidence} className="h-3" />
+        )}
       </div>
 
       <Separator />
 
       <div className="flex flex-col gap-2">
         <h4 className="text-sm font-semibold">Hypothesis</h4>
-        <p className="text-sm text-muted-foreground">{data.hypothesis || "N/A"}</p>
+        {data.hypothesis ? (
+          <MarkdownContent
+            content={data.hypothesis}
+            className="text-sm text-muted-foreground"
+          />
+        ) : (
+          <p className="text-sm text-muted-foreground">N/A</p>
+        )}
       </div>
 
       <Separator />
@@ -354,7 +375,10 @@ function DiagnosisPanel({
               {(data.evidence as string[]).map((item: string, i: number) => (
                 <li key={i} className="flex gap-2 text-sm">
                   <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-500" />
-                  <span className="text-muted-foreground">{item}</span>
+                  <MarkdownContent
+                    content={item}
+                    className="flex-1 text-muted-foreground [&_p]:mb-0"
+                  />
                 </li>
               ))}
             </ul>
@@ -370,7 +394,10 @@ function DiagnosisPanel({
             {(data.recommendedActions as string[]).map((item: string, i: number) => (
               <li key={i} className="flex gap-2 text-sm">
                 <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-500" />
-                <span className="text-muted-foreground">{item}</span>
+                <MarkdownContent
+                  content={item}
+                  className="flex-1 text-muted-foreground [&_p]:mb-0"
+                />
               </li>
             ))}
           </ul>

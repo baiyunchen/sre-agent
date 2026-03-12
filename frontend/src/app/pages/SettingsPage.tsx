@@ -54,40 +54,39 @@ export function SettingsPage() {
           <p className="text-muted-foreground">Configure your SRE Agent system</p>
         </div>
 
-        <Tabs defaultValue="general" className="flex flex-col gap-6">
-          <div className="flex gap-6">
-            <TabsList className="flex h-auto flex-col items-stretch gap-1 bg-transparent">
-              <TabsTrigger value="general" className="justify-start gap-2">
-                <Globe className="size-4" />
-                General
-              </TabsTrigger>
-              <TabsTrigger value="llm" className="justify-start gap-2">
-                <Brain className="size-4" />
-                LLM Configuration
-              </TabsTrigger>
-              <TabsTrigger value="slack" className="justify-start gap-2">
-                <MessageSquare className="size-4" />
-                Slack Integration
-              </TabsTrigger>
-              <TabsTrigger value="parsers" className="justify-start gap-2">
-                <FileSearch className="size-4" />
-                Alert Parsers
-              </TabsTrigger>
-              <TabsTrigger value="approvals" className="justify-start gap-2">
-                <Shield className="size-4" />
-                Approval Settings
-              </TabsTrigger>
-              <TabsTrigger value="observability" className="justify-start gap-2">
-                <Activity className="size-4" />
-                Observability
-              </TabsTrigger>
-              <TabsTrigger value="database" className="justify-start gap-2">
-                <Database className="size-4" />
-                Database
-              </TabsTrigger>
-            </TabsList>
+        <Tabs defaultValue="general" orientation="vertical" className="gap-6">
+          <TabsList variant="line" className="w-48 shrink-0 gap-1">
+            <TabsTrigger value="general" className="justify-start gap-2 px-3 py-2">
+              <Globe className="size-4" />
+              General
+            </TabsTrigger>
+            <TabsTrigger value="llm" className="justify-start gap-2 px-3 py-2">
+              <Brain className="size-4" />
+              LLM Configuration
+            </TabsTrigger>
+            <TabsTrigger value="slack" className="justify-start gap-2 px-3 py-2">
+              <MessageSquare className="size-4" />
+              Slack Integration
+            </TabsTrigger>
+            <TabsTrigger value="parsers" className="justify-start gap-2 px-3 py-2">
+              <FileSearch className="size-4" />
+              Alert Parsers
+            </TabsTrigger>
+            <TabsTrigger value="approvals" className="justify-start gap-2 px-3 py-2">
+              <Shield className="size-4" />
+              Approval Settings
+            </TabsTrigger>
+            <TabsTrigger value="observability" className="justify-start gap-2 px-3 py-2">
+              <Activity className="size-4" />
+              Observability
+            </TabsTrigger>
+            <TabsTrigger value="database" className="justify-start gap-2 px-3 py-2">
+              <Database className="size-4" />
+              Database
+            </TabsTrigger>
+          </TabsList>
 
-            <div className="flex-1">
+          <div className="flex-1">
               <TabsContent value="general" className="m-0 flex flex-col gap-6">
                 <Card>
                   <CardHeader>
@@ -482,7 +481,6 @@ export function SettingsPage() {
                 </Button>
               </div>
             </div>
-          </div>
         </Tabs>
       </div>
     </div>
