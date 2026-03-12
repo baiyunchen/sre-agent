@@ -9,6 +9,7 @@ public interface IAgentRunRepository
     Task UpdateAsync(AgentRunEntity agentRun, CancellationToken ct = default);
     Task<AgentRunEntity?> GetByIdAsync(Guid id, CancellationToken ct = default);
     Task<IReadOnlyList<AgentRunEntity>> GetBySessionAsync(Guid sessionId, CancellationToken ct = default);
+    Task<Dictionary<Guid, int>> CountToolInvocationsBySessionsAsync(IEnumerable<Guid> sessionIds, CancellationToken ct = default);
 }
 
 public class AgentRunRepository : IAgentRunRepository
@@ -45,5 +46,18 @@ public class AgentRunRepository : IAgentRunRepository
             .Include(r => r.ToolInvocations)
             .OrderBy(r => r.StartedAt)
             .ToListAsync(ct);
+    }
+
+    public async Task<Dictionary<Guid, int>> CountToolInvocationsBySessionsAsync(
+        IEnumerable<Guid> sessionIds, CancellationToken ct = default)
+    {
+        var ids = sessionIds.ToList();
+        if (ids.Count == 0) return new Dictionary<Guid, int>();
+
+        return await _context.AgentRuns
+            .Where(r => ids.Contains(r.SessionId))
+            .SelectMany(r => r.ToolInvocations, (run, _) => run.SessionId)
+            .GroupBy(sid => sid)
+            .ToDictionaryAsync(g => g.Key, g => g.Count(), ct);
     }
 }

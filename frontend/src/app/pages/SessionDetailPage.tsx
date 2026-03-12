@@ -339,19 +339,18 @@ function DiagnosisPanel({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-2">
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-medium">Confidence</span>
-          <span className="text-2xl font-bold">
-            {data.confidence != null ? `${data.confidence}%` : "N/A"}
-          </span>
-        </div>
-        {data.confidence != null && (
-          <Progress value={data.confidence} className="h-3" />
-        )}
-      </div>
-
-      <Separator />
+      {data.confidence != null && (
+        <>
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium">Confidence</span>
+              <span className="text-2xl font-bold">{data.confidence}%</span>
+            </div>
+            <Progress value={data.confidence} className="h-3" />
+          </div>
+          <Separator />
+        </>
+      )}
 
       <div className="flex flex-col gap-2">
         <h4 className="text-sm font-semibold">Hypothesis</h4>

@@ -44,6 +44,7 @@ public class SessionControllerTests
     public async Task GetSessions_ShouldReturnOkWithMappedPayload_WhenRequestIsValid()
     {
         var sessionRepository = new Mock<ISessionRepository>();
+        var agentRunRepository = new Mock<IAgentRunRepository>();
         var session = new SessionEntity
         {
             Id = Guid.NewGuid(),
@@ -63,7 +64,11 @@ public class SessionControllerTests
             .Setup(r => r.ListAsync(It.IsAny<SessionListQuery>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((new List<SessionEntity> { session }, 1));
 
-        var controller = CreateController(sessionRepository.Object);
+        agentRunRepository
+            .Setup(r => r.CountToolInvocationsBySessionsAsync(It.IsAny<IEnumerable<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, int> { [session.Id] = 7 });
+
+        var controller = CreateController(sessionRepository.Object, agentRunRepository: agentRunRepository.Object);
         var request = new GetSessionsRequest();
 
         var result = await controller.GetSessions(request, CancellationToken.None);
@@ -75,7 +80,8 @@ public class SessionControllerTests
         payload.Items.Should().HaveCount(1);
         payload.Items[0].Source.Should().Be("CloudWatch");
         payload.Items[0].Severity.Should().Be("Critical");
-        payload.Items[0].AgentSteps.Should().Be(3);
+        payload.Items[0].Status.Should().Be("Completed");
+        payload.Items[0].AgentSteps.Should().Be(7);
         payload.Items[0].Duration.Should().BeGreaterThan(0);
     }
 
@@ -97,6 +103,7 @@ public class SessionControllerTests
     public async Task GetSession_ShouldReturnDetailPayload_WithSourceAndSeverityFields()
     {
         var sessionRepository = new Mock<ISessionRepository>();
+        var agentRunRepository = new Mock<IAgentRunRepository>();
         var session = new SessionEntity
         {
             Id = Guid.NewGuid(),
@@ -120,7 +127,11 @@ public class SessionControllerTests
             .Setup(r => r.GetAsync(session.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(session);
 
-        var controller = CreateController(sessionRepository.Object);
+        agentRunRepository
+            .Setup(r => r.CountToolInvocationsBySessionsAsync(It.IsAny<IEnumerable<Guid>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<Guid, int> { [session.Id] = 12 });
+
+        var controller = CreateController(sessionRepository.Object, agentRunRepository: agentRunRepository.Object);
         var result = await controller.GetSession(session.Id, CancellationToken.None);
 
         var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
@@ -129,7 +140,7 @@ public class SessionControllerTests
         payload.Id.Should().Be(session.Id);
         payload.Source.Should().Be("Prometheus");
         payload.Severity.Should().Be("Warning");
-        payload.AgentSteps.Should().Be(4);
+        payload.AgentSteps.Should().Be(12);
         payload.Duration.Should().BeGreaterThan(0);
     }
 

@@ -105,9 +105,20 @@ public class SessionController : ControllerBase
 
         var (items, total) = await _sessionRepository.ListAsync(query, ct);
 
+        var sessionIds = items.Select(s => s.Id).ToList();
+        var toolCounts = await _agentRunRepository.CountToolInvocationsBySessionsAsync(sessionIds, ct);
+
+        var summaries = items.Select(s =>
+        {
+            var dto = MapSessionSummary(s);
+            if (toolCounts.TryGetValue(s.Id, out var count))
+                dto.AgentSteps = count;
+            return dto;
+        }).ToList();
+
         return Ok(new SessionListResponse
         {
-            Items = items.Select(MapSessionSummary).ToList(),
+            Items = summaries,
             Total = total,
             Page = request.Page,
             PageSize = request.PageSize
@@ -122,7 +133,12 @@ public class SessionController : ControllerBase
         if (session == null)
             return NotFound();
 
-        return Ok(MapSessionDetail(session));
+        var toolCounts = await _agentRunRepository.CountToolInvocationsBySessionsAsync([sessionId], ct);
+        var detail = MapSessionDetail(session);
+        if (toolCounts.TryGetValue(sessionId, out var count))
+            detail.AgentSteps = count;
+
+        return Ok(detail);
     }
 
     [HttpGet("/api/sessions/{sessionId:guid}/timeline")]
@@ -272,7 +288,8 @@ public class SessionController : ControllerBase
         var metadata = new Dictionary<string, object>
         {
             ["current_agent_id"] = _agent.Id,
-            ["current_step"] = result.IterationCount
+            ["current_step"] = result.IterationCount,
+            ["status"] = result.IsSuccess ? "Completed" : "Failed"
         };
 
         if (!string.IsNullOrWhiteSpace(result.Output))
@@ -391,6 +408,13 @@ public class SessionController : ControllerBase
         }));
     }
 
+    private static string ResolveSessionStatus(SreAgent.Repository.Entities.SessionEntity session)
+    {
+        if (session.Status == "Running" && session.CompletedAt.HasValue)
+            return "Completed";
+        return session.Status;
+    }
+
     private static SessionSummaryDto MapSessionSummary(SreAgent.Repository.Entities.SessionEntity session)
     {
         var now = DateTime.UtcNow;
@@ -401,7 +425,7 @@ public class SessionController : ControllerBase
         return new SessionSummaryDto
         {
             Id = session.Id,
-            Status = session.Status,
+            Status = ResolveSessionStatus(session),
             AlertName = session.AlertName,
             AlertId = session.AlertId,
             ServiceName = session.ServiceName,
@@ -424,7 +448,7 @@ public class SessionController : ControllerBase
         return new SessionDetailResponse
         {
             Id = session.Id,
-            Status = session.Status,
+            Status = ResolveSessionStatus(session),
             AlertId = session.AlertId,
             AlertName = session.AlertName,
             Source = session.AlertSource ?? ReadStringField(session.AlertData, "source", "alertSource"),
