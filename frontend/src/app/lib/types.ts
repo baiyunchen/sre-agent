@@ -145,3 +145,17 @@ export interface DashboardActiveSessionsResponse {
   items: DashboardActiveSessionSummary[]
   total: number
 }
+
+export interface DashboardActivityItem {
+  id: string
+  sessionId: string
+  eventType: string
+  description: string | null
+  actor: string | null
+  occurredAt: string
+}
+
+export interface DashboardActivitiesResponse {
+  items: DashboardActivityItem[]
+  total: number
+}

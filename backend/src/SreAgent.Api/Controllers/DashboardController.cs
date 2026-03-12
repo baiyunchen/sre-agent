@@ -8,10 +8,14 @@ namespace SreAgent.Api.Controllers;
 public class DashboardController : ControllerBase
 {
     private readonly ISessionRepository _sessionRepository;
+    private readonly IAuditLogRepository _auditLogRepository;
 
-    public DashboardController(ISessionRepository sessionRepository)
+    public DashboardController(
+        ISessionRepository sessionRepository,
+        IAuditLogRepository auditLogRepository)
     {
         _sessionRepository = sessionRepository;
+        _auditLogRepository = auditLogRepository;
     }
 
     [HttpGet("/api/dashboard/stats")]
@@ -50,6 +54,28 @@ public class DashboardController : ControllerBase
             Total = total
         });
     }
+
+    [HttpGet("/api/dashboard/activities")]
+    public async Task<IActionResult> GetActivities([FromQuery] int limit = 20, CancellationToken ct = default)
+    {
+        if (limit < 1 || limit > 100)
+            return BadRequest(new { error = "limit must be between 1 and 100" });
+
+        var (items, total) = await _auditLogRepository.GetRecentAsync(limit, ct);
+        return Ok(new DashboardActivitiesResponse
+        {
+            Items = items.Select(log => new DashboardActivityItem
+            {
+                Id = log.Id,
+                SessionId = log.SessionId,
+                EventType = log.EventType,
+                Description = log.EventDescription,
+                Actor = log.Actor,
+                OccurredAt = log.OccurredAt
+            }).ToList(),
+            Total = total
+        });
+    }
 }
 
 public class DashboardStatsResponse
@@ -75,4 +101,20 @@ public class DashboardActiveSessionSummary
     public int CurrentStep { get; set; }
     public DateTime? StartedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
+}
+
+public class DashboardActivitiesResponse
+{
+    public List<DashboardActivityItem> Items { get; set; } = [];
+    public int Total { get; set; }
+}
+
+public class DashboardActivityItem
+{
+    public Guid Id { get; set; }
+    public Guid SessionId { get; set; }
+    public string EventType { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public string? Actor { get; set; }
+    public DateTime OccurredAt { get; set; }
 }

@@ -1,5 +1,9 @@
 import { SectionCard } from "@/app/layout/AppLayout"
-import { useDashboardActiveSessions, useDashboardStats } from "@/app/lib/hooks/useDashboard"
+import {
+  useDashboardActivities,
+  useDashboardActiveSessions,
+  useDashboardStats,
+} from "@/app/lib/hooks/useDashboard"
 
 function formatDuration(seconds: number): string {
   if (seconds <= 0) {
@@ -15,9 +19,19 @@ function formatDuration(seconds: number): string {
   return `${minutes}m ${remainSeconds}s`
 }
 
+function formatTimestamp(value: string): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return value
+  }
+
+  return date.toLocaleString()
+}
+
 export function DashboardPage() {
   const statsQuery = useDashboardStats()
   const activeSessionsQuery = useDashboardActiveSessions(8)
+  const activitiesQuery = useDashboardActivities(12)
 
   const stats = statsQuery.data
 
@@ -76,6 +90,29 @@ export function DashboardPage() {
             <p className="font-medium">{session.alertName ?? session.id}</p>
             <p className="text-xs text-muted-foreground">
               {session.serviceName ?? "-"} · {session.status} · Step {session.currentStep}
+            </p>
+          </div>
+        ))}
+      </SectionCard>
+
+      <SectionCard title="Recent Activities">
+        {activitiesQuery.isLoading && (
+          <p className="text-sm text-muted-foreground">加载活动流中...</p>
+        )}
+        {activitiesQuery.error instanceof Error && (
+          <p className="text-sm text-destructive">{activitiesQuery.error.message}</p>
+        )}
+        {!activitiesQuery.isLoading &&
+          !(activitiesQuery.error instanceof Error) &&
+          (activitiesQuery.data?.items.length ?? 0) === 0 && (
+            <p className="text-sm text-muted-foreground">当前无活动记录。</p>
+          )}
+        {(activitiesQuery.data?.items ?? []).map((item) => (
+          <div key={item.id} className="mb-2 rounded-md border p-2 text-sm">
+            <p className="font-medium">{item.eventType}</p>
+            <p className="text-xs text-muted-foreground">
+              {item.description ?? "无描述"} · {item.actor ?? "system"} ·{" "}
+              {formatTimestamp(item.occurredAt)}
             </p>
           </div>
         ))}

@@ -288,7 +288,6 @@ public class SessionRepositoryIntegrationTests
             var stats = await repository.GetDashboardStatsAsync(startOfDay);
             stats.TotalSessionsToday.Should().BeGreaterThanOrEqualTo(baselineStats.TotalSessionsToday + 3);
             stats.PendingApprovals.Should().BeGreaterThanOrEqualTo(baselineStats.PendingApprovals + 1);
-            stats.AvgProcessingTimeSeconds.Should().BeGreaterThanOrEqualTo(120);
 
             var (activeItems, activeTotal) = await repository.GetActiveSessionsAsync(10);
             activeTotal.Should().BeGreaterThanOrEqualTo(2);

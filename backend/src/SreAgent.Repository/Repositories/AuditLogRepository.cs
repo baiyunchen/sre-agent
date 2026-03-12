@@ -8,6 +8,7 @@ public interface IAuditLogRepository
     Task<AuditLogEntity> CreateAsync(AuditLogEntity auditLog, CancellationToken ct = default);
     Task<IReadOnlyList<AuditLogEntity>> GetBySessionAsync(Guid sessionId, CancellationToken ct = default);
     Task<IReadOnlyList<AuditLogEntity>> GetByEventTypeAsync(string eventType, int limit = 100, CancellationToken ct = default);
+    Task<(IReadOnlyList<AuditLogEntity> Items, int Total)> GetRecentAsync(int limit = 20, CancellationToken ct = default);
 }
 
 public class AuditLogRepository : IAuditLogRepository
@@ -41,5 +42,17 @@ public class AuditLogRepository : IAuditLogRepository
             .OrderByDescending(a => a.OccurredAt)
             .Take(limit)
             .ToListAsync(ct);
+    }
+
+    public async Task<(IReadOnlyList<AuditLogEntity> Items, int Total)> GetRecentAsync(int limit = 20, CancellationToken ct = default)
+    {
+        var normalizedLimit = Math.Clamp(limit, 1, 100);
+        var query = _context.AuditLogs
+            .AsNoTracking()
+            .OrderByDescending(a => a.OccurredAt);
+
+        var total = await query.CountAsync(ct);
+        var items = await query.Take(normalizedLimit).ToListAsync(ct);
+        return (items, total);
     }
 }

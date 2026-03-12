@@ -1,4 +1,5 @@
 import type {
+  DashboardActivitiesResponse,
   DashboardActiveSessionsResponse,
   DashboardStatsResponse,
   SessionListResponse,
@@ -156,4 +157,19 @@ export async function fetchDashboardActiveSessions(
   }
 
   return (await response.json()) as DashboardActiveSessionsResponse
+}
+
+export async function fetchDashboardActivities(
+  limit = 20,
+): Promise<DashboardActivitiesResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/dashboard/activities?limit=${limit}`)
+  if (!response.ok) {
+    const fallbackMessage = `获取 Dashboard 活动流失败: ${response.status}`
+    const errorPayload = (await response.json().catch(() => null)) as
+      | { error?: string }
+      | null
+    throw new Error(errorPayload?.error ?? fallbackMessage)
+  }
+
+  return (await response.json()) as DashboardActivitiesResponse
 }
