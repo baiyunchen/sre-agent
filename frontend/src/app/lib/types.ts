@@ -42,3 +42,22 @@ export interface SessionsQuery {
   sortOrder?: "asc" | "desc"
   search?: string
 }
+
+export interface SessionMessageRequest {
+  message: string
+  userId?: string
+}
+
+export interface SessionMessageTokenUsage {
+  promptTokens: number
+  completionTokens: number
+  totalTokens: number
+}
+
+export interface SessionMessageResponse {
+  sessionId: string
+  output: string | null
+  isSuccess: boolean
+  error: string | null
+  tokenUsage: SessionMessageTokenUsage
+}

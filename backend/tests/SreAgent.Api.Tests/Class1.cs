@@ -7,6 +7,8 @@ using SreAgent.Application.Services;
 using SreAgent.Application.Tools.Todo.Models;
 using SreAgent.Application.Tools.Todo.Services;
 using SreAgent.Framework.Abstractions;
+using SreAgent.Framework.Contexts;
+using SreAgent.Framework.Results;
 using SreAgent.Repository.Entities;
 using SreAgent.Repository.Repositories;
 using System.Text.Json;
@@ -503,12 +505,157 @@ public class SessionControllerTests
         result.Should().BeOfType<NotFoundResult>();
     }
 
+    [Fact]
+    public async Task PostSessionMessage_ShouldReturnBadRequest_WhenMessageIsEmpty()
+    {
+        var controller = CreateController(Mock.Of<ISessionRepository>());
+
+        var result = await controller.PostSessionMessage(
+            Guid.NewGuid(),
+            new SessionMessageRequest { Message = "   " },
+            CancellationToken.None);
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+    }
+
+    [Fact]
+    public async Task PostSessionMessage_ShouldReturnNotFound_WhenSessionDoesNotExist()
+    {
+        var sessionRepository = new Mock<ISessionRepository>();
+        sessionRepository
+            .Setup(r => r.GetAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((SessionEntity?)null);
+
+        var controller = CreateController(sessionRepository.Object);
+        var result = await controller.PostSessionMessage(
+            Guid.NewGuid(),
+            new SessionMessageRequest { Message = "继续分析" },
+            CancellationToken.None);
+
+        result.Should().BeOfType<NotFoundResult>();
+    }
+
+    [Fact]
+    public async Task PostSessionMessage_ShouldReturnConflict_WhenSessionIsNotRunning()
+    {
+        var sessionId = Guid.NewGuid();
+        var sessionRepository = new Mock<ISessionRepository>();
+        sessionRepository
+            .Setup(r => r.GetAsync(sessionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SessionEntity { Id = sessionId, Status = "Completed" });
+
+        var controller = CreateController(sessionRepository.Object);
+        var result = await controller.PostSessionMessage(
+            sessionId,
+            new SessionMessageRequest { Message = "继续分析" },
+            CancellationToken.None);
+
+        result.Should().BeOfType<ConflictObjectResult>();
+    }
+
+    [Fact]
+    public async Task PostSessionMessage_ShouldReturnConflict_WhenContextIsUnavailable()
+    {
+        var sessionId = Guid.NewGuid();
+        var sessionRepository = new Mock<ISessionRepository>();
+        var contextStore = new Mock<IContextStore>();
+
+        sessionRepository
+            .Setup(r => r.GetAsync(sessionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SessionEntity { Id = sessionId, Status = "Running" });
+
+        contextStore
+            .Setup(s => s.GetAsync(sessionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ContextSnapshot?)null);
+
+        var controller = CreateController(sessionRepository.Object, contextStore: contextStore.Object);
+        var result = await controller.PostSessionMessage(
+            sessionId,
+            new SessionMessageRequest { Message = "继续分析" },
+            CancellationToken.None);
+
+        result.Should().BeOfType<ConflictObjectResult>();
+    }
+
+    [Fact]
+    public async Task PostSessionMessage_ShouldReturnResponseAndPersistSnapshot_WhenRequestIsValid()
+    {
+        var sessionId = Guid.NewGuid();
+        var sessionRepository = new Mock<ISessionRepository>();
+        var contextStore = new Mock<IContextStore>();
+        var auditService = new Mock<IAuditService>();
+        var agent = new Mock<IAgent>();
+
+        sessionRepository
+            .Setup(r => r.GetAsync(sessionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SessionEntity { Id = sessionId, Status = "Running" });
+
+        contextStore
+            .Setup(s => s.GetAsync(sessionId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ContextSnapshot.Empty(sessionId));
+        contextStore
+            .Setup(s => s.SaveAsync(It.IsAny<ContextSnapshot>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        auditService
+            .Setup(a => a.LogAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<string>(),
+                It.IsAny<string?>(),
+                It.IsAny<object?>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        agent.SetupGet(a => a.Id).Returns("sre-coordinator");
+        agent
+            .Setup(a => a.ExecuteAsync(
+                It.IsAny<IContextManager>(),
+                It.IsAny<IReadOnlyDictionary<string, object>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IContextManager context, IReadOnlyDictionary<string, object>? _, CancellationToken _) =>
+                AgentResult.Success("收到，继续分析中", context, new TokenUsage(7, 11), iterationCount: 2));
+
+        var controller = CreateController(
+            sessionRepository.Object,
+            contextStore: contextStore.Object,
+            auditService: auditService.Object,
+            agent: agent.Object,
+            tokenEstimator: new SimpleTokenEstimator());
+
+        var result = await controller.PostSessionMessage(
+            sessionId,
+            new SessionMessageRequest { Message = "继续分析这个会话", UserId = "user-1" },
+            CancellationToken.None);
+
+        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
+        var payload = okResult.Value.Should().BeOfType<SessionMessageResponse>().Subject;
+
+        payload.SessionId.Should().Be(sessionId);
+        payload.IsSuccess.Should().BeTrue();
+        payload.Output.Should().Contain("继续分析");
+        payload.TokenUsage.TotalTokens.Should().Be(18);
+
+        contextStore.Verify(s => s.SaveAsync(
+            It.Is<ContextSnapshot>(snapshot =>
+                snapshot.SessionId == sessionId
+                && snapshot.Metadata.ContainsKey("current_step")),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
     private static SessionController CreateController(
         ISessionRepository sessionRepository,
         IMessageRepository? messageRepository = null,
         IAgentRunRepository? agentRunRepository = null,
         IDiagnosticDataRepository? diagnosticDataRepository = null,
-        ITodoService? todoService = null)
+        ITodoService? todoService = null,
+        IContextStore? contextStore = null,
+        ITokenEstimator? tokenEstimator = null,
+        ContextManagerOptions? contextOptions = null,
+        IExecutionTracker? executionTracker = null,
+        IAuditService? auditService = null,
+        IAgent? agent = null)
     {
         return new SessionController(
             sessionRepository,
@@ -516,11 +663,15 @@ public class SessionControllerTests
             agentRunRepository ?? Mock.Of<IAgentRunRepository>(),
             diagnosticDataRepository ?? Mock.Of<IDiagnosticDataRepository>(),
             todoService ?? Mock.Of<ITodoService>(),
+            contextStore ?? Mock.Of<IContextStore>(),
+            tokenEstimator ?? new SimpleTokenEstimator(),
+            contextOptions ?? new ContextManagerOptions(),
+            executionTracker ?? Mock.Of<IExecutionTracker>(),
             Mock.Of<ICheckpointService>(),
             Mock.Of<IInterventionService>(),
             Mock.Of<ISessionRecoveryService>(),
-            Mock.Of<IAuditService>(),
-            Mock.Of<IAgent>(),
+            auditService ?? Mock.Of<IAuditService>(),
+            agent ?? Mock.Of<IAgent>(),
             Mock.Of<ILogger<SessionController>>());
     }
 }

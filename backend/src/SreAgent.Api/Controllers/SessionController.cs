@@ -1,9 +1,12 @@
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
+using SreAgent.Api.Models;
 using SreAgent.Application.Services;
 using SreAgent.Application.Tools.Todo.Models;
 using SreAgent.Application.Tools.Todo.Services;
 using SreAgent.Framework.Abstractions;
+using SreAgent.Framework.Contexts;
+using SreAgent.Framework.Results;
 using SreAgent.Repository.Repositories;
 
 namespace SreAgent.Api.Controllers;
@@ -18,11 +21,18 @@ public class SessionController : ControllerBase
     private static readonly HashSet<string> AllowedSortOrders =
         new(["asc", "desc"], StringComparer.OrdinalIgnoreCase);
 
+    private static readonly HashSet<string> MessageAllowedSessionStatuses =
+        new(["Running"], StringComparer.OrdinalIgnoreCase);
+
     private readonly ISessionRepository _sessionRepository;
     private readonly IMessageRepository _messageRepository;
     private readonly IAgentRunRepository _agentRunRepository;
     private readonly IDiagnosticDataRepository _diagnosticDataRepository;
     private readonly ITodoService _todoService;
+    private readonly IContextStore _contextStore;
+    private readonly ITokenEstimator _tokenEstimator;
+    private readonly ContextManagerOptions _contextOptions;
+    private readonly IExecutionTracker _executionTracker;
     private readonly ICheckpointService _checkpointService;
     private readonly IInterventionService _interventionService;
     private readonly ISessionRecoveryService _recoveryService;
@@ -36,6 +46,10 @@ public class SessionController : ControllerBase
         IAgentRunRepository agentRunRepository,
         IDiagnosticDataRepository diagnosticDataRepository,
         ITodoService todoService,
+        IContextStore contextStore,
+        ITokenEstimator tokenEstimator,
+        ContextManagerOptions contextOptions,
+        IExecutionTracker executionTracker,
         ICheckpointService checkpointService,
         IInterventionService interventionService,
         ISessionRecoveryService recoveryService,
@@ -48,6 +62,10 @@ public class SessionController : ControllerBase
         _agentRunRepository = agentRunRepository;
         _diagnosticDataRepository = diagnosticDataRepository;
         _todoService = todoService;
+        _contextStore = contextStore;
+        _tokenEstimator = tokenEstimator;
+        _contextOptions = contextOptions;
+        _executionTracker = executionTracker;
         _checkpointService = checkpointService;
         _interventionService = interventionService;
         _recoveryService = recoveryService;
@@ -187,6 +205,103 @@ public class SessionController : ControllerBase
         {
             SessionId = sessionId,
             Items = todos.Select(MapTodo).ToList()
+        });
+    }
+
+    [HttpPost("/api/sessions/{sessionId:guid}/messages")]
+    public async Task<IActionResult> PostSessionMessage(
+        Guid sessionId,
+        [FromBody] SessionMessageRequest request,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(request.Message))
+            return BadRequest(new { error = "message cannot be empty" });
+
+        var session = await _sessionRepository.GetAsync(sessionId, ct);
+        if (session == null)
+            return NotFound();
+
+        if (!MessageAllowedSessionStatuses.Contains(session.Status))
+        {
+            return Conflict(new
+            {
+                error = $"session status '{session.Status}' does not accept new messages"
+            });
+        }
+
+        var snapshot = await _contextStore.GetAsync(sessionId, ct);
+        if (snapshot == null)
+            return Conflict(new { error = "session context is unavailable" });
+
+        var userInput = request.Message.Trim();
+        var context = DefaultContextManager.FromSnapshot(snapshot, _tokenEstimator, _contextOptions);
+        context.AddUserMessage(userInput);
+
+        var variables = new Dictionary<string, object>
+        {
+            [IExecutionTracker.VariableKey] = _executionTracker
+        };
+
+        await _auditService.LogAsync(
+            sessionId,
+            "SessionMessageSent",
+            "Follow-up message posted to session",
+            new { message = userInput },
+            "user",
+            request.UserId,
+            ct);
+
+        AgentResult result;
+        try
+        {
+            result = await _agent.ExecuteAsync(context, variables, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to execute follow-up message for session {SessionId}", sessionId);
+            await _auditService.LogAsync(
+                sessionId,
+                "SessionMessageFailed",
+                ex.Message,
+                new { message = userInput },
+                "system",
+                null,
+                ct);
+            throw;
+        }
+
+        var metadata = new Dictionary<string, object>
+        {
+            ["current_agent_id"] = _agent.Id,
+            ["current_step"] = result.IterationCount
+        };
+
+        if (!string.IsNullOrWhiteSpace(result.Output))
+            metadata["diagnosis_summary"] = result.Output;
+
+        await _contextStore.SaveAsync(result.Context.ExportSnapshot(sessionId, metadata), ct);
+
+        await _auditService.LogAsync(
+            sessionId,
+            result.IsSuccess ? "SessionMessageProcessed" : "SessionMessageFailed",
+            result.IsSuccess ? "Follow-up message processed" : (result.Error?.Message ?? "Follow-up message failed"),
+            new { message = userInput, result.IsSuccess },
+            "system",
+            null,
+            ct);
+
+        return Ok(new SessionMessageResponse
+        {
+            SessionId = sessionId,
+            Output = result.Output,
+            IsSuccess = result.IsSuccess,
+            Error = result.Error?.Message,
+            TokenUsage = new TokenUsageInfo
+            {
+                PromptTokens = result.TokenUsage.PromptTokens,
+                CompletionTokens = result.TokenUsage.CompletionTokens,
+                TotalTokens = result.TokenUsage.TotalTokens
+            }
         });
     }
 
@@ -696,4 +811,19 @@ public class SessionTodoItemResponse
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
     public DateTime? CompletedAt { get; set; }
+}
+
+public class SessionMessageRequest
+{
+    public string Message { get; set; } = string.Empty;
+    public string? UserId { get; set; }
+}
+
+public class SessionMessageResponse
+{
+    public Guid SessionId { get; set; }
+    public string? Output { get; set; }
+    public bool IsSuccess { get; set; }
+    public string? Error { get; set; }
+    public TokenUsageInfo TokenUsage { get; set; } = new();
 }
