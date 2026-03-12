@@ -159,3 +159,11 @@ export interface DashboardActivitiesResponse {
   items: DashboardActivityItem[]
   total: number
 }
+
+export interface DashboardSnapshotEvent {
+  eventType: "dashboard.snapshot"
+  generatedAt: string
+  stats: DashboardStatsResponse
+  activeSessions: DashboardActiveSessionsResponse
+  activities: DashboardActivitiesResponse
+}

@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Moq;
 using SreAgent.Api.Controllers;
@@ -130,5 +131,73 @@ public class DashboardControllerTests
         payload.Items.Should().HaveCount(1);
         payload.Items[0].EventType.Should().Be("SessionCompleted");
         payload.Items[0].Actor.Should().Be("system");
+    }
+
+    [Fact]
+    public async Task GetEventsStream_ShouldWriteDashboardSnapshotEvent()
+    {
+        var now = DateTime.UtcNow;
+        var sessions = new List<SessionEntity>
+        {
+            new()
+            {
+                Id = Guid.NewGuid(),
+                AlertName = "inventory-service-log-errors-dev",
+                ServiceName = "inventory-service",
+                Status = "Running",
+                CurrentStep = 2,
+                UpdatedAt = now
+            }
+        };
+        var activities = new List<AuditLogEntity>
+        {
+            new()
+            {
+                Id = Guid.NewGuid(),
+                SessionId = Guid.NewGuid(),
+                EventType = "SessionStarted",
+                EventDescription = "Analysis session started",
+                Actor = "system",
+                OccurredAt = now
+            }
+        };
+
+        var sessionRepository = new Mock<ISessionRepository>();
+        sessionRepository
+            .Setup(r => r.GetDashboardStatsAsync(It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DashboardStatsResult
+            {
+                TotalSessionsToday = 1,
+                AutoResolutionRate = 50,
+                AvgProcessingTimeSeconds = 30,
+                PendingApprovals = 0
+            });
+        sessionRepository
+            .Setup(r => r.GetActiveSessionsAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((sessions, sessions.Count));
+
+        var auditLogRepository = new Mock<IAuditLogRepository>();
+        auditLogRepository
+            .Setup(r => r.GetRecentAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((activities, activities.Count));
+
+        var controller = CreateController(
+            sessionRepository: sessionRepository.Object,
+            auditLogRepository: auditLogRepository.Object);
+
+        var httpContext = new DefaultHttpContext();
+        var responseStream = new MemoryStream();
+        httpContext.Response.Body = responseStream;
+        controller.ControllerContext = new ControllerContext { HttpContext = httpContext };
+
+        using var cts = new CancellationTokenSource();
+        cts.CancelAfter(TimeSpan.FromMilliseconds(300));
+        await controller.GetEventsStream(cts.Token);
+
+        httpContext.Response.ContentType.Should().Be("text/event-stream");
+        responseStream.Position = 0;
+        var responseText = await new StreamReader(responseStream).ReadToEndAsync();
+        responseText.Should().Contain("event: dashboard.snapshot");
+        responseText.Should().Contain("\"eventType\":\"dashboard.snapshot\"");
     }
 }

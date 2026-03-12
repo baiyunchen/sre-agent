@@ -15,6 +15,10 @@ import type {
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:5099"
 
+export function getApiBaseUrl(): string {
+  return API_BASE_URL
+}
+
 function buildQueryString(query: SessionsQuery): string {
   const params = new URLSearchParams()
   Object.entries(query).forEach(([key, value]) => {

@@ -4,6 +4,7 @@ import {
   useDashboardActiveSessions,
   useDashboardStats,
 } from "@/app/lib/hooks/useDashboard"
+import { useDashboardStream } from "@/app/lib/hooks/useDashboardStream"
 
 function formatDuration(seconds: number): string {
   if (seconds <= 0) {
@@ -28,10 +29,23 @@ function formatTimestamp(value: string): string {
   return date.toLocaleString()
 }
 
+function getConnectionText(status: "connecting" | "connected" | "disconnected"): string {
+  if (status === "connected") {
+    return "已连接"
+  }
+
+  if (status === "disconnected") {
+    return "重连中"
+  }
+
+  return "连接中"
+}
+
 export function DashboardPage() {
   const statsQuery = useDashboardStats()
   const activeSessionsQuery = useDashboardActiveSessions(8)
   const activitiesQuery = useDashboardActivities(12)
+  const stream = useDashboardStream(8, 12)
 
   const stats = statsQuery.data
 
@@ -40,6 +54,10 @@ export function DashboardPage() {
       <h2 className="text-2xl font-bold">Dashboard</h2>
       <p className="text-sm text-muted-foreground">
         基于 Figma 设计稿的页面骨架，后续将对接 dashboard stats/activities/active-sessions API。
+      </p>
+      <p className="text-xs text-muted-foreground">
+        实时通道: {getConnectionText(stream.status)}
+        {stream.lastEventAt ? ` · 最后更新 ${formatTimestamp(stream.lastEventAt)}` : ""}
       </p>
 
       {statsQuery.error instanceof Error && (
