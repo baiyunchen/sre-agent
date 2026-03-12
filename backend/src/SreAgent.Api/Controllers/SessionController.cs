@@ -132,13 +132,12 @@ public class SessionController : ControllerBase
         if (session == null)
             return NotFound();
 
-        var messagesTask = _messageRepository.GetBySessionAsync(sessionId, ct);
-        var agentRunsTask = _agentRunRepository.GetBySessionAsync(sessionId, ct);
-        await Task.WhenAll(messagesTask, agentRunsTask);
+        var messages = await _messageRepository.GetBySessionAsync(sessionId, ct);
+        var agentRuns = await _agentRunRepository.GetBySessionAsync(sessionId, ct);
 
         var events = new List<TimelineEventResponse>();
-        events.AddRange(messagesTask.Result.Select(MapMessageEvent));
-        events.AddRange(agentRunsTask.Result.SelectMany(MapAgentRunEvents));
+        events.AddRange(messages.Select(MapMessageEvent));
+        events.AddRange(agentRuns.SelectMany(MapAgentRunEvents));
 
         return Ok(new SessionTimelineResponse
         {

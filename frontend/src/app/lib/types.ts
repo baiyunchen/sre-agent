@@ -61,3 +61,65 @@ export interface SessionMessageResponse {
   error: string | null
   tokenUsage: SessionMessageTokenUsage
 }
+
+export interface TimelineEvent {
+  id: string
+  eventType: "message" | "agent_run" | "tool_invocation" | string
+  timestamp: string
+  title: string
+  detail: string | null
+  status: string | null
+  actor: string | null
+}
+
+export interface SessionTimelineResponse {
+  sessionId: string
+  events: TimelineEvent[]
+}
+
+export interface SessionDiagnosisResponse {
+  sessionId: string
+  hypothesis: string
+  confidence: number | null
+  evidence: string[]
+  recommendedActions: string[]
+  totalRecords: number
+  severityBreakdown: Record<string, number>
+  sourceBreakdown: Record<string, number>
+  timeWindowStart: string | null
+  timeWindowEnd: string | null
+}
+
+export interface ToolInvocationSummary {
+  id: string
+  agentRunId: string
+  toolName: string
+  status: string
+  approvalStatus: string | null
+  errorMessage: string | null
+  agentId: string | null
+  agentName: string | null
+  requestedAt: string
+  completedAt: string | null
+  durationMs: number
+}
+
+export interface SessionToolInvocationsResponse {
+  sessionId: string
+  items: ToolInvocationSummary[]
+}
+
+export interface SessionTodoItem {
+  id: string
+  content: string
+  status: "pending" | "in_progress" | "completed" | "cancelled" | string
+  priority: "low" | "medium" | "high" | string
+  createdAt: string
+  updatedAt: string
+  completedAt: string | null
+}
+
+export interface SessionTodosResponse {
+  sessionId: string
+  items: SessionTodoItem[]
+}

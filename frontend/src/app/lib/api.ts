@@ -1,7 +1,12 @@
 import type {
   SessionListResponse,
+  SessionDiagnosisResponse,
   SessionMessageRequest,
   SessionMessageResponse,
+  SessionTimelineResponse,
+  SessionTodoItem,
+  SessionTodosResponse,
+  SessionToolInvocationsResponse,
   SessionsQuery,
 } from "@/app/lib/types"
 
@@ -57,4 +62,68 @@ export async function postSessionMessage(
   }
 
   return (await response.json()) as SessionMessageResponse
+}
+
+export async function fetchSessionTimeline(
+  sessionId: string,
+): Promise<SessionTimelineResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/sessions/${sessionId}/timeline`)
+  if (!response.ok) {
+    const fallbackMessage = `获取时间线失败: ${response.status}`
+    const errorPayload = (await response.json().catch(() => null)) as
+      | { error?: string }
+      | null
+    throw new Error(errorPayload?.error ?? fallbackMessage)
+  }
+
+  return (await response.json()) as SessionTimelineResponse
+}
+
+export async function fetchSessionDiagnosis(
+  sessionId: string,
+): Promise<SessionDiagnosisResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/sessions/${sessionId}/diagnosis`)
+  if (!response.ok) {
+    const fallbackMessage = `获取诊断失败: ${response.status}`
+    const errorPayload = (await response.json().catch(() => null)) as
+      | { error?: string }
+      | null
+    throw new Error(errorPayload?.error ?? fallbackMessage)
+  }
+
+  return (await response.json()) as SessionDiagnosisResponse
+}
+
+export async function fetchSessionToolInvocations(
+  sessionId: string,
+): Promise<SessionToolInvocationsResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/sessions/${sessionId}/tool-invocations`)
+  if (!response.ok) {
+    const fallbackMessage = `获取工具调用失败: ${response.status}`
+    const errorPayload = (await response.json().catch(() => null)) as
+      | { error?: string }
+      | null
+    throw new Error(errorPayload?.error ?? fallbackMessage)
+  }
+
+  return (await response.json()) as SessionToolInvocationsResponse
+}
+
+export async function fetchSessionTodos(
+  sessionId: string,
+): Promise<SessionTodosResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/sessions/${sessionId}/todos`)
+  if (!response.ok) {
+    const fallbackMessage = `获取 Todo 失败: ${response.status}`
+    const errorPayload = (await response.json().catch(() => null)) as
+      | { error?: string }
+      | null
+    throw new Error(errorPayload?.error ?? fallbackMessage)
+  }
+
+  const payload = (await response.json()) as SessionTodosResponse
+  return {
+    ...payload,
+    items: payload.items ?? ([] as SessionTodoItem[]),
+  }
 }
