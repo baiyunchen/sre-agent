@@ -30,12 +30,28 @@ Before coding, update `docs/13-大型变更任务看板.md`:
 3. Write each task as a User Story with acceptance criteria
 4. Create stage gate record: `docs/pm/stage-gate-<feature-key>.md`
 
-## Step 1.5: Document artifacts per role
+## Step 1.5: Document artifacts per role (MANDATORY)
 
-- Product artifact: `docs/product/prd-<feature-key>.md`
-- Architect artifact: `docs/architecture/arch-<feature-key>.md`
-- QA artifact: `docs/qa/qa-report-<feature-key>.md`
+Each role MUST produce its artifact before the next phase starts. These are NOT optional:
+
+- **Product**: `docs/product/prd-<feature-key>.md` — call `product-manager` to produce
+- **Architecture**: `docs/architecture/arch-<feature-key>.md` — call `solution-architect` to produce
+- **Stage gate**: `docs/pm/stage-gate-<feature-key>.md` — call `project-manager` to review each phase
+- **QA**: `docs/qa/qa-report-<feature-key>.md` — call `qa-engineer` to produce
 - Developer: doc optional, but task board evidence mandatory
+
+After Product artifact is created, `project-manager` must review and mark Product stage `GO` in stage-gate.
+After Architecture artifact is created, `project-manager` must review and mark Architect stage `GO` in stage-gate.
+
+## Step 1.7: Pre-development gate check (BLOCKING)
+
+Before ANY coding begins, verify all of the following. If any check fails, STOP and fix it first:
+
+1. `docs/product/prd-<feature-key>.md` exists and is non-empty
+2. `docs/architecture/arch-<feature-key>.md` exists and is non-empty
+3. `docs/pm/stage-gate-<feature-key>.md` has Product = `GO` and Architect = `GO`
+
+If checks fail: mark the story as `blocked` on the task board, state which artifact is missing, and hand off to the responsible role agent. Do NOT proceed to Step 2.
 
 ## Step 2: Contract-first API design
 

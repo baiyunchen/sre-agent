@@ -1,0 +1,38 @@
+---
+description: Block development until product and architecture artifacts exist and are approved
+alwaysApply: true
+---
+
+# 开发前置产物强制检查
+
+在任何 Story 从 `todo` 转为 `in_progress` 之前，**必须**确认以下三项全部满足，否则禁止开始编码：
+
+## 必检项
+
+1. **PRD 文件存在且非空**：`docs/product/prd-<feature-key>.md`
+   - 必须包含：背景、用户故事、验收标准、范围边界
+   - 如果不存在，调用 `product-manager` 角色先产出
+
+2. **架构文档存在且非空**：`docs/architecture/arch-<feature-key>.md`
+   - 必须包含：需求映射、模块拆分、API 设计说明、关键数据流
+   - 如果不存在，调用 `solution-architect` 角色先产出
+
+3. **阶段门禁已通过**：`docs/pm/stage-gate-<feature-key>.md`
+   - Product 阶段：`GO`
+   - Architect 阶段：`GO`
+   - 如果文件不存在或上述阶段未标记 `GO`，调用 `project-manager` 角色先评审
+
+## 执行规则
+
+- 检查时机：每次 Story 状态即将变为 `in_progress` 时
+- 检查方式：读取对应文件，确认内容非空且门禁为 `GO`
+- 不满足时：将 Story 标记为 `blocked`，在看板记录阻塞原因，并交由对应角色补齐
+- 满足时：方可进入开发阶段，在看板记录"前置检查通过"
+
+## 豁免条件
+
+以下场景可跳过产品和架构文档检查（但仍需在看板记录豁免原因）：
+
+- 纯 bug 修复（无需求变更、无 API 变更）
+- 纯重构（不改变外部行为）
+- 紧急热修复（事后必须补齐文档）
