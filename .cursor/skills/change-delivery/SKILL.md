@@ -11,9 +11,11 @@ Use role agents in this order:
 
 1. `project-manager` (progress and coordination)
 2. `product-manager` (requirements and user stories)
-3. `solution-architect` (decomposition and API contract)
-4. `developer` (implementation and tests)
-5. `qa-engineer` (e2e validation and sign-off)
+3. `designer` (UI design descriptions using `frontend-design` skill)
+4. `solution-architect` (decomposition and API contract)
+5. `developer` (implementation and tests)
+6. `code-reviewer` (code quality gate using `code-reviewer` skill)
+7. `qa-engineer` (e2e validation and sign-off)
 
 Developer should apply:
 
@@ -30,28 +32,23 @@ Before coding, update `docs/13-任务看板.md`:
 3. Write each task as a User Story with acceptance criteria
 4. Create stage gate record: `docs/pm/stage-gate-<feature-key>.md`
 
-## Step 1.5: Document artifacts per role (MANDATORY)
+## Step 1.5: Document artifacts per role
 
-Each role MUST produce its artifact before the next phase starts. These are NOT optional:
-
-- **Product**: `docs/product/prd-<feature-key>.md` — call `product-manager` to produce
-- **Architecture**: `docs/architecture/arch-<feature-key>.md` — call `solution-architect` to produce
-- **Stage gate**: `docs/pm/stage-gate-<feature-key>.md` — call `project-manager` to review each phase
-- **QA**: `docs/qa/qa-report-<feature-key>.md` — call `qa-engineer` to produce
+- Product artifact: `docs/product/prd-<feature-key>.md`
+- Design artifact: `docs/design/design-<feature-key>.md`
+- Architect artifact: `docs/architecture/arch-<feature-key>.md`
+- QA artifact: `docs/qa/qa-report-<feature-key>.md`
 - Developer: doc optional, but task board evidence mandatory
 
-After Product artifact is created, `project-manager` must review and mark Product stage `GO` in stage-gate.
-After Architecture artifact is created, `project-manager` must review and mark Architect stage `GO` in stage-gate.
+## Step 1.6: Frontend design
 
-## Step 1.7: Pre-development gate check (BLOCKING)
+Use `designer` agent with `frontend-design` skill:
 
-Before ANY coding begins, verify all of the following. If any check fails, STOP and fix it first:
-
-1. `docs/product/prd-<feature-key>.md` exists and is non-empty
-2. `docs/architecture/arch-<feature-key>.md` exists and is non-empty
-3. `docs/pm/stage-gate-<feature-key>.md` has Product = `GO` and Architect = `GO`
-
-If checks fail: mark the story as `blocked` on the task board, state which artifact is missing, and hand off to the responsible role agent. Do NOT proceed to Step 2.
+1. Review existing UI patterns and component conventions
+2. Produce design descriptions covering key screens and interaction states
+3. Define success, empty, loading, and error states
+4. Reference existing components that should be reused
+5. Save artifact as `docs/design/design-<feature-key>.md`
 
 ## Step 2: Contract-first API design
 
@@ -75,6 +72,15 @@ Coverage gate:
 - Changed modules >= 85%
 - Do not reduce overall project coverage
 - If baseline is below 85%, add a coverage补齐 task immediately
+
+## Step 3.5: Code review gate
+
+Use `code-reviewer` agent with `code-reviewer` skill:
+
+1. Review all implementation changes for correctness, maintainability, and security
+2. Verify adherence to approved architecture and API contracts
+3. If requesting changes, developer must address findings before proceeding
+4. Only approved code moves forward to QA
 
 ## Step 4: Mandatory E2E before done
 
