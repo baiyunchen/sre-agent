@@ -194,7 +194,14 @@ export type SessionStreamEventType =
   | "agent.completed"
   | "tool.started"
   | "tool.completed"
+  | "tool.approval_required"
   | "session.ended"
+
+export interface ToolApprovalRequiredPayload {
+  invocationId: string
+  toolName: string
+  parameters?: string
+}
 
 export interface SessionStreamEvent {
   eventType: SessionStreamEventType
@@ -244,7 +251,7 @@ export interface ApprovalHistoryResponse {
 export interface ApprovalRuleItem {
   id: string
   toolName: string
-  ruleType: "always-allow" | "always-deny"
+  ruleType: "always-allow" | "always-deny" | "require-approval"
   createdBy: string | null
   createdAt: string
 }
@@ -256,6 +263,6 @@ export interface ApprovalRulesListResponse {
 
 export interface CreateApprovalRuleRequest {
   toolName: string
-  ruleType: "always-allow" | "always-deny"
+  ruleType: "always-allow" | "always-deny" | "require-approval"
   createdBy?: string
 }

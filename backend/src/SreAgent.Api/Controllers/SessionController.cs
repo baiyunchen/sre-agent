@@ -39,6 +39,8 @@ public class SessionController : ControllerBase
     private readonly ISessionStreamPublisher _streamPublisher;
     private readonly IAgent _agent;
     private readonly IBackgroundSessionExecutor _backgroundExecutor;
+    private readonly IToolApprovalResolver _toolApprovalResolver;
+    private readonly IToolInvocationRepository _toolInvocationRepository;
     private readonly ILogger<SessionController> _logger;
 
     public SessionController(
@@ -57,6 +59,8 @@ public class SessionController : ControllerBase
         ISessionStreamPublisher streamPublisher,
         IAgent agent,
         IBackgroundSessionExecutor backgroundExecutor,
+        IToolApprovalResolver toolApprovalResolver,
+        IToolInvocationRepository toolInvocationRepository,
         ILogger<SessionController> logger)
     {
         _sessionRepository = sessionRepository;
@@ -74,6 +78,8 @@ public class SessionController : ControllerBase
         _streamPublisher = streamPublisher;
         _agent = agent;
         _backgroundExecutor = backgroundExecutor;
+        _toolApprovalResolver = toolApprovalResolver;
+        _toolInvocationRepository = toolInvocationRepository;
         _logger = logger;
     }
 
@@ -387,6 +393,90 @@ public class SessionController : ControllerBase
                 Output = (string?)null,
                 IsSuccess = true,
                 Error = (string?)null
+            });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("/api/sessions/{sessionId:guid}/tool-invocations/{invocationId:guid}/approve")]
+    public async Task<IActionResult> ApproveToolInvocation(
+        Guid sessionId,
+        Guid invocationId,
+        [FromBody] ToolApprovalDecisionRequest? request,
+        CancellationToken ct)
+    {
+        var session = await _sessionRepository.GetAsync(sessionId, ct);
+        if (session == null)
+            return NotFound();
+
+        var invocation = await _toolInvocationRepository.GetByIdAsync(invocationId, ct);
+        if (invocation == null)
+            return NotFound();
+
+        var run = await _agentRunRepository.GetByIdAsync(invocation.AgentRunId, ct);
+        if (run == null || run.SessionId != sessionId)
+            return NotFound();
+
+        if (!_toolApprovalResolver.HasPendingApproval(invocationId))
+            return BadRequest(new { error = "Invocation is not pending approval" });
+
+        try
+        {
+            await _toolApprovalResolver.ResolveApprovalAsync(
+                invocationId, approved: true,
+                request?.Comment,
+                request?.ApproverId ?? "api",
+                ct);
+            return Ok(new ToolApprovalDecisionResponse
+            {
+                InvocationId = invocationId,
+                Status = "Approved",
+                Message = "Approval accepted"
+            });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("/api/sessions/{sessionId:guid}/tool-invocations/{invocationId:guid}/reject")]
+    public async Task<IActionResult> RejectToolInvocation(
+        Guid sessionId,
+        Guid invocationId,
+        [FromBody] ToolApprovalDecisionRequest? request,
+        CancellationToken ct)
+    {
+        var session = await _sessionRepository.GetAsync(sessionId, ct);
+        if (session == null)
+            return NotFound();
+
+        var invocation = await _toolInvocationRepository.GetByIdAsync(invocationId, ct);
+        if (invocation == null)
+            return NotFound();
+
+        var run = await _agentRunRepository.GetByIdAsync(invocation.AgentRunId, ct);
+        if (run == null || run.SessionId != sessionId)
+            return NotFound();
+
+        if (!_toolApprovalResolver.HasPendingApproval(invocationId))
+            return BadRequest(new { error = "Invocation is not pending approval" });
+
+        try
+        {
+            await _toolApprovalResolver.ResolveApprovalAsync(
+                invocationId, approved: false,
+                request?.Comment,
+                request?.ApproverId ?? "api",
+                ct);
+            return Ok(new ToolApprovalDecisionResponse
+            {
+                InvocationId = invocationId,
+                Status = "Rejected",
+                Message = "Rejection accepted"
             });
         }
         catch (InvalidOperationException ex)
@@ -732,6 +822,19 @@ public class InterventionRequest
 public class ResumeRequest
 {
     public string? ContinueInput { get; set; }
+}
+
+public class ToolApprovalDecisionRequest
+{
+    public string? ApproverId { get; set; }
+    public string? Comment { get; set; }
+}
+
+public class ToolApprovalDecisionResponse
+{
+    public Guid InvocationId { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public string? Message { get; set; }
 }
 
 public class GetSessionsRequest

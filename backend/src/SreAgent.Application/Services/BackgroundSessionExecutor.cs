@@ -15,17 +15,20 @@ public sealed class BackgroundSessionExecutor : IBackgroundSessionExecutor
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ISessionExecutionRegistry _registry;
     private readonly ISessionStreamPublisher _streamPublisher;
+    private readonly IToolApprovalChecker _toolApprovalChecker;
     private readonly ILogger<BackgroundSessionExecutor> _logger;
 
     public BackgroundSessionExecutor(
         IServiceScopeFactory scopeFactory,
         ISessionExecutionRegistry registry,
         ISessionStreamPublisher streamPublisher,
+        IToolApprovalChecker toolApprovalChecker,
         ILogger<BackgroundSessionExecutor> logger)
     {
         _scopeFactory = scopeFactory;
         _registry = registry;
         _streamPublisher = streamPublisher;
+        _toolApprovalChecker = toolApprovalChecker;
         _logger = logger;
     }
 
@@ -49,7 +52,8 @@ public sealed class BackgroundSessionExecutor : IBackgroundSessionExecutor
             {
                 var variables = new Dictionary<string, object>
                 {
-                    [IExecutionTracker.VariableKey] = tracker
+                    [IExecutionTracker.VariableKey] = tracker,
+                    [IToolApprovalChecker.VariableKey] = _toolApprovalChecker
                 };
 
                 var stopwatch = Stopwatch.StartNew();

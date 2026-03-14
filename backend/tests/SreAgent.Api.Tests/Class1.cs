@@ -654,7 +654,9 @@ public class SessionControllerTests
         ContextManagerOptions? contextOptions = null,
         IAuditService? auditService = null,
         IAgent? agent = null,
-        IBackgroundSessionExecutor? backgroundExecutor = null)
+        IBackgroundSessionExecutor? backgroundExecutor = null,
+        IToolApprovalResolver? toolApprovalResolver = null,
+        IToolInvocationRepository? toolInvocationRepository = null)
     {
         return new SessionController(
             sessionRepository,
@@ -672,6 +674,8 @@ public class SessionControllerTests
             Mock.Of<ISessionStreamPublisher>(),
             agent ?? Mock.Of<IAgent>(),
             backgroundExecutor ?? Mock.Of<IBackgroundSessionExecutor>(),
+            toolApprovalResolver ?? Mock.Of<IToolApprovalResolver>(),
+            toolInvocationRepository ?? Mock.Of<IToolInvocationRepository>(),
             Mock.Of<ILogger<SessionController>>());
     }
 }

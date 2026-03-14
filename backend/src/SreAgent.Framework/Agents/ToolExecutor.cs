@@ -39,6 +39,10 @@ public class ToolExecutor
             ? t as IExecutionTracker
             : null;
 
+        var checker = variables.TryGetValue(IToolApprovalChecker.VariableKey, out var c)
+            ? c as IToolApprovalChecker
+            : null;
+
         foreach (var toolCall in toolCalls)
         {
             var tool = tools.FirstOrDefault(t => t.Name == toolCall.Name);
@@ -63,8 +67,40 @@ public class ToolExecutor
                     catch (Exception ex) { _logger.LogWarning(ex, "Failed to track tool start for {ToolName}", toolCall.Name); }
                 }
 
-                result = await ExecuteSingleToolAsync(
-                    sessionId, agentId, tool, toolCall, variables, parentContext, cancellationToken);
+                if (checker != null)
+                {
+                    var checkResult = await checker.CheckRuleAsync(toolCall.Name, cancellationToken);
+                    if (checkResult.AllowDirect == false)
+                    {
+                        result = ToolResult.Failure("Tool denied by approval rule", "TOOL_DENIED");
+                    }
+                    else if (checkResult.RequiresApproval && invocationId.HasValue)
+                    {
+                        var approvalResult = await checker.RequestApprovalAsync(
+                            sessionId, invocationId.Value, toolCall.Name, rawArgs, cancellationToken);
+                        if (!approvalResult.IsApproved)
+                        {
+                            result = ToolResult.Failure(
+                                approvalResult.Reason ?? "Tool rejected by approver",
+                                "TOOL_REJECTED");
+                        }
+                        else
+                        {
+                            result = await ExecuteSingleToolAsync(
+                                sessionId, agentId, tool, toolCall, variables, parentContext, cancellationToken);
+                        }
+                    }
+                    else
+                    {
+                        result = await ExecuteSingleToolAsync(
+                            sessionId, agentId, tool, toolCall, variables, parentContext, cancellationToken);
+                    }
+                }
+                else
+                {
+                    result = await ExecuteSingleToolAsync(
+                        sessionId, agentId, tool, toolCall, variables, parentContext, cancellationToken);
+                }
 
                 if (tracker != null && invocationId.HasValue)
                 {

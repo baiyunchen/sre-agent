@@ -17,7 +17,7 @@ public interface IApprovalService
 public class ApprovalService : IApprovalService
 {
     private static readonly IReadOnlyCollection<string> ApprovalHistoryTypes = ["Approve", "Reject"];
-    private static readonly HashSet<string> ValidRuleTypes = ["always-allow", "always-deny"];
+    private static readonly HashSet<string> ValidRuleTypes = ["always-allow", "always-deny", "require-approval"];
 
     private readonly ISessionRepository _sessionRepository;
     private readonly IInterventionRepository _interventionRepository;

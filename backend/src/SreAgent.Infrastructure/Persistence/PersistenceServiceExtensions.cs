@@ -35,6 +35,9 @@ public static class PersistenceServiceExtensions
         services.AddScoped<ICheckpointService, CheckpointService>();
         services.AddScoped<IInterventionService, InterventionService>();
         services.AddScoped<IApprovalService, ApprovalService>();
+        services.AddSingleton<ToolApprovalService>();
+        services.AddSingleton<IToolApprovalChecker>(sp => sp.GetRequiredService<ToolApprovalService>());
+        services.AddSingleton<IToolApprovalResolver>(sp => sp.GetRequiredService<ToolApprovalService>());
         services.AddScoped<ISessionRecoveryService, SessionRecoveryService>();
         services.AddScoped<IAuditService, AuditService>();
         services.AddSingleton<ISessionStreamPublisher, SessionStreamPublisher>();

@@ -1068,7 +1068,7 @@ components:
       properties:
         eventType:
           type: string
-          enum: [agent.started, agent.completed, tool.started, tool.completed, session.ended]
+          enum: [agent.started, agent.completed, tool.started, tool.completed, tool.approval_required, session.ended]
         sessionId:
           type: string
           format: uuid

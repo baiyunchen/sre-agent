@@ -21,6 +21,8 @@ import {
   Send,
   User,
   Bot,
+  ShieldCheck,
+  ShieldX,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -50,7 +52,13 @@ import {
 } from "@/app/lib/hooks/useSessionDetailData"
 import { useSessionMessage } from "@/app/lib/hooks/useSessionMessage"
 import { useSessionStream } from "@/app/lib/hooks/useSessionStream"
-import { interruptSession, cancelSession, resumeSession } from "@/app/lib/api"
+import {
+  interruptSession,
+  cancelSession,
+  resumeSession,
+  approveToolInvocation,
+  rejectToolInvocation,
+} from "@/app/lib/api"
 import { MarkdownContent } from "@/app/components/MarkdownContent"
 import type {
   TimelineEvent as TimelineEventType,
@@ -105,7 +113,38 @@ export function SessionDetailPage() {
   const sessionStatus = sessionDetailQuery.data?.status ?? ""
   const showResumeUI = sessionStatus === "Interrupted" || sessionStatus === "WaitingApproval"
   const streamEnabled = sessionStatus === "Running"
-  useSessionStream(sessionId, streamEnabled)
+  const { pendingApproval, clearPendingApproval } = useSessionStream(sessionId, streamEnabled)
+
+  const approveToolMutation = useMutation({
+    mutationFn: (payload: { invocationId: string; approverId: string; comment?: string }) =>
+      sessionId
+        ? approveToolInvocation(sessionId, payload.invocationId, {
+            approverId: payload.approverId,
+            comment: payload.comment,
+          })
+        : Promise.reject(new Error("No session")),
+    onSuccess: () => {
+      clearPendingApproval()
+      queryClient.invalidateQueries({ queryKey: ["session-detail", sessionId] })
+      queryClient.invalidateQueries({ queryKey: ["session-timeline", sessionId] })
+      queryClient.invalidateQueries({ queryKey: ["session-tool-invocations", sessionId] })
+    },
+  })
+  const rejectToolMutation = useMutation({
+    mutationFn: (payload: { invocationId: string; approverId: string; comment?: string }) =>
+      sessionId
+        ? rejectToolInvocation(sessionId, payload.invocationId, {
+            approverId: payload.approverId,
+            comment: payload.comment,
+          })
+        : Promise.reject(new Error("No session")),
+    onSuccess: () => {
+      clearPendingApproval()
+      queryClient.invalidateQueries({ queryKey: ["session-detail", sessionId] })
+      queryClient.invalidateQueries({ queryKey: ["session-timeline", sessionId] })
+      queryClient.invalidateQueries({ queryKey: ["session-tool-invocations", sessionId] })
+    },
+  })
 
   const tokenUsage = sessionDetailQuery.data?.tokenUsage
 
@@ -225,6 +264,53 @@ export function SessionDetailPage() {
                       ))}
                     </div>
                   </div>
+
+                  {/* Tool Approval Pending */}
+                  {pendingApproval && (
+                    <div className="shrink-0 border-b border-amber-200 bg-amber-50/80 px-3 py-3">
+                      <div className="flex flex-col gap-2">
+                        <p className="text-sm font-medium text-amber-800">
+                          工具 {pendingApproval.toolName} 需要审批
+                        </p>
+                        {pendingApproval.parameters && (
+                          <pre className="max-h-24 overflow-y-auto rounded border border-amber-200 bg-white/80 p-2 text-xs text-amber-900">
+                            {pendingApproval.parameters}
+                          </pre>
+                        )}
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            onClick={() =>
+                              approveToolMutation.mutate({
+                                invocationId: pendingApproval.invocationId,
+                                approverId: "oncall-user",
+                              })
+                            }
+                            disabled={approveToolMutation.isPending || rejectToolMutation.isPending}
+                            className="bg-emerald-600 text-white hover:bg-emerald-700"
+                          >
+                            <ShieldCheck className="mr-1.5 size-4" />
+                            批准
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              rejectToolMutation.mutate({
+                                invocationId: pendingApproval.invocationId,
+                                approverId: "oncall-user",
+                              })
+                            }
+                            disabled={approveToolMutation.isPending || rejectToolMutation.isPending}
+                            className="border-red-300 text-red-600 hover:bg-red-50"
+                          >
+                            <ShieldX className="mr-1.5 size-4" />
+                            拒绝
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Input Area */}
                   <div className="shrink-0 border-t pt-3">

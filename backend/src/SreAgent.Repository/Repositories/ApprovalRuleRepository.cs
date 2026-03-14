@@ -7,6 +7,7 @@ public interface IApprovalRuleRepository
 {
     Task<IReadOnlyList<ApprovalRuleEntity>> GetAllAsync(CancellationToken ct = default);
     Task<ApprovalRuleEntity?> GetByIdAsync(Guid id, CancellationToken ct = default);
+    Task<ApprovalRuleEntity?> GetByToolNameAsync(string toolName, CancellationToken ct = default);
     Task<ApprovalRuleEntity> CreateAsync(ApprovalRuleEntity rule, CancellationToken ct = default);
     Task<bool> DeleteAsync(Guid id, CancellationToken ct = default);
 }
@@ -32,6 +33,18 @@ public class ApprovalRuleRepository : IApprovalRuleRepository
     {
         return await _context.ApprovalRules
             .FirstOrDefaultAsync(r => r.Id == id, ct);
+    }
+
+    public async Task<ApprovalRuleEntity?> GetByToolNameAsync(string toolName, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(toolName))
+            return null;
+
+        return await _context.ApprovalRules
+            .AsNoTracking()
+            .Where(r => r.ToolName == toolName.Trim())
+            .OrderByDescending(r => r.CreatedAt)
+            .FirstOrDefaultAsync(ct);
     }
 
     public async Task<ApprovalRuleEntity> CreateAsync(ApprovalRuleEntity rule, CancellationToken ct = default)

@@ -21,6 +21,12 @@ import type {
   SessionsQuery,
 } from "@/app/lib/types"
 
+export interface ToolApprovalDecisionResponse {
+  invocationId: string
+  status: "Approved" | "Rejected"
+  message?: string
+}
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:5099"
 
 export function getApiBaseUrl(): string {
@@ -354,6 +360,50 @@ export async function cancelSession(
   }
 
   return (await response.json()) as { message: string }
+}
+
+export async function approveToolInvocation(
+  sessionId: string,
+  invocationId: string,
+  payload: ApprovalDecisionRequest,
+): Promise<ToolApprovalDecisionResponse> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/sessions/${sessionId}/tool-invocations/${invocationId}/approve`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+  )
+
+  if (!response.ok) {
+    const errorPayload = (await response.json().catch(() => null)) as { error?: string } | null
+    throw new Error(errorPayload?.error ?? `Approve tool failed: ${response.status}`)
+  }
+
+  return (await response.json()) as ToolApprovalDecisionResponse
+}
+
+export async function rejectToolInvocation(
+  sessionId: string,
+  invocationId: string,
+  payload: ApprovalDecisionRequest,
+): Promise<ToolApprovalDecisionResponse> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/sessions/${sessionId}/tool-invocations/${invocationId}/reject`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+  )
+
+  if (!response.ok) {
+    const errorPayload = (await response.json().catch(() => null)) as { error?: string } | null
+    throw new Error(errorPayload?.error ?? `Reject tool failed: ${response.status}`)
+  }
+
+  return (await response.json()) as ToolApprovalDecisionResponse
 }
 
 export async function resumeSession(

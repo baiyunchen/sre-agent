@@ -57,7 +57,9 @@ export function ApprovalsPage() {
   const [comment, setComment] = useState("")
   const [historyFilter, setHistoryFilter] = useState<string>("all")
   const [newRuleToolName, setNewRuleToolName] = useState("")
-  const [newRuleType, setNewRuleType] = useState<"always-allow" | "always-deny">("always-allow")
+  const [newRuleType, setNewRuleType] = useState<
+    "always-allow" | "always-deny" | "require-approval"
+  >("always-allow")
 
   const pendingQuery = usePendingApprovals(20)
   const historyQuery = useApprovalHistory(50)
@@ -248,7 +250,10 @@ export function ApprovalsPage() {
                       Past approval decisions
                     </CardDescription>
                   </div>
-                  <Select value={historyFilter} onValueChange={setHistoryFilter}>
+                  <Select
+                    value={historyFilter}
+                    onValueChange={(v) => v != null && setHistoryFilter(v)}
+                  >
                     <SelectTrigger className="w-[180px]">
                       <Filter className="size-4" />
                       <SelectValue placeholder="Filter" />
@@ -335,7 +340,7 @@ export function ApprovalsPage() {
               <CardHeader>
                 <CardTitle>Permanent Approval Rules</CardTitle>
                 <CardDescription>
-                  Rules that auto-approve or auto-deny specific tool executions
+                  Rules that auto-approve, auto-deny, or require human approval for tool executions
                 </CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col gap-4">
@@ -355,15 +360,16 @@ export function ApprovalsPage() {
                     <Select
                       value={newRuleType}
                       onValueChange={(v) =>
-                        setNewRuleType(v as "always-allow" | "always-deny")
+                        setNewRuleType(v as "always-allow" | "always-deny" | "require-approval")
                       }
                     >
-                      <SelectTrigger className="w-[160px]" id="rule-type">
+                      <SelectTrigger className="w-[180px]" id="rule-type">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="always-allow">Always Allow</SelectItem>
                         <SelectItem value="always-deny">Always Deny</SelectItem>
+                        <SelectItem value="require-approval">Require Approval</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
