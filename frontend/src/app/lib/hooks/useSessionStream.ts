@@ -11,15 +11,23 @@ export interface PendingToolApproval {
   parameters?: string
 }
 
+export type AgentActivity =
+  | { phase: "thinking" }
+  | { phase: "tool"; toolName: string }
+  | { phase: "approval"; toolName: string }
+  | null
+
 /**
  * Subscribe to per-session execution SSE stream.
  * Invalidates timeline and tool-invocations when events arrive.
  * Captures tool.approval_required for pending approval UI.
+ * Tracks current agent activity for loading indicators.
  */
 export function useSessionStream(sessionId: string | undefined, enabled: boolean) {
   const queryClient = useQueryClient()
   const [status, setStatus] = useState<SessionStreamStatus>("connecting")
   const [pendingApproval, setPendingApproval] = useState<PendingToolApproval | null>(null)
+  const [activity, setActivity] = useState<AgentActivity>(null)
   const streamUrl = useMemo(
     () => (sessionId ? `${getApiBaseUrl()}/api/sessions/${sessionId}/stream` : null),
     [sessionId],
@@ -33,8 +41,11 @@ export function useSessionStream(sessionId: string | undefined, enabled: boolean
     if (!streamUrl || !sessionId || !enabled) {
       setStatus("disconnected")
       setPendingApproval(null)
+      setActivity(null)
       return
     }
+
+    setActivity({ phase: "thinking" })
 
     const eventSource = new EventSource(streamUrl)
 
@@ -63,25 +74,38 @@ export function useSessionStream(sessionId: string | undefined, enabled: boolean
 
     const handlers = eventTypes.map((eventType) => {
       const handler = (e: MessageEvent) => {
-        if (eventType === "tool.approval_required" && e.data) {
+        let parsed: { payload?: Record<string, unknown> } | undefined
+        if (e.data) {
           try {
-            const data = JSON.parse(e.data) as { payload?: ToolApprovalRequiredPayload }
-            const payload = data.payload
-            if (payload?.invocationId && payload?.toolName) {
-              setPendingApproval({
-                invocationId: String(payload.invocationId),
-                toolName: payload.toolName,
-                parameters: payload.parameters,
-              })
-            }
+            parsed = JSON.parse(e.data) as { payload?: Record<string, unknown> }
           } catch {
-            // ignore parse errors
+            // ignore
           }
+        }
+
+        if (eventType === "agent.started") {
+          setActivity({ phase: "thinking" })
+        } else if (eventType === "tool.started") {
+          const toolName = (parsed?.payload?.toolName as string) ?? "unknown"
+          setActivity({ phase: "tool", toolName })
         } else if (eventType === "tool.completed") {
           setPendingApproval(null)
-        } else if (eventType === "session.ended") {
+          setActivity({ phase: "thinking" })
+        } else if (eventType === "tool.approval_required") {
+          const payload = parsed?.payload as ToolApprovalRequiredPayload | undefined
+          if (payload?.invocationId && payload?.toolName) {
+            setPendingApproval({
+              invocationId: String(payload.invocationId),
+              toolName: payload.toolName,
+              parameters: payload.parameters,
+            })
+            setActivity({ phase: "approval", toolName: payload.toolName })
+          }
+        } else if (eventType === "agent.completed" || eventType === "session.ended") {
           setPendingApproval(null)
+          setActivity(null)
         }
+
         invalidateQueries()
       }
       eventSource.addEventListener(eventType, handler)
@@ -96,5 +120,5 @@ export function useSessionStream(sessionId: string | undefined, enabled: boolean
     }
   }, [streamUrl, sessionId, enabled, queryClient])
 
-  return { status, pendingApproval, clearPendingApproval }
+  return { status, pendingApproval, clearPendingApproval, activity }
 }

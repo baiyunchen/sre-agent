@@ -54,6 +54,7 @@ import {
 } from "@/app/lib/hooks/useSessionDetailData"
 import { useSessionMessage } from "@/app/lib/hooks/useSessionMessage"
 import { useSessionStream } from "@/app/lib/hooks/useSessionStream"
+import type { AgentActivity } from "@/app/lib/hooks/useSessionStream"
 import {
   interruptSession,
   cancelSession,
@@ -121,7 +122,7 @@ export function SessionDetailPage() {
   useEffect(() => {
     setIsAgentRunning(sessionStatus === "Running")
   }, [sessionStatus])
-  const { pendingApproval, clearPendingApproval } = useSessionStream(sessionId, streamEnabled)
+  const { pendingApproval, clearPendingApproval, activity } = useSessionStream(sessionId, streamEnabled)
 
   const approveToolMutation = useMutation({
     mutationFn: (payload: { invocationId: string; approverId: string; comment?: string }) =>
@@ -162,7 +163,7 @@ export function SessionDetailPage() {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
-  }, [events.length])
+  }, [events.length, activity])
 
   const canSend =
     Boolean(sessionId) && message.trim().length > 0 && !sessionMessageMutation.isPending
@@ -273,6 +274,9 @@ export function SessionDetailPage() {
                           onToggle={() => toggleEvent(event.id)}
                         />
                       ))}
+                      {(sessionStatus === "Running" || activity) && (
+                        <AgentActivityIndicator activity={activity} />
+                      )}
                     </div>
                   </div>
 
@@ -769,6 +773,42 @@ function TodoItem({ todo }: { todo: SessionTodoItem }) {
                 : "Pending"}
           </Badge>
         </div>
+      </div>
+    </div>
+  )
+}
+
+function AgentActivityIndicator({ activity }: { activity: AgentActivity }) {
+  const label = (() => {
+    if (!activity) return "Agent 正在处理..."
+    switch (activity.phase) {
+      case "thinking":
+        return "Agent 正在思考..."
+      case "tool":
+        return `正在执行工具: ${activity.toolName}`
+      case "approval":
+        return `等待审批: ${activity.toolName}`
+    }
+  })()
+
+  const isApproval = activity?.phase === "approval"
+
+  return (
+    <div className="flex items-start gap-2 py-1.5">
+      <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-gray-200">
+        <Bot className="size-3.5 text-gray-700" />
+      </div>
+      <div className="flex items-center gap-2 rounded-2xl rounded-bl-sm bg-gray-100 px-3.5 py-2">
+        {isApproval ? (
+          <ShieldCheck className="size-3.5 animate-pulse text-amber-500" />
+        ) : (
+          <div className="flex gap-1">
+            <span className="size-1.5 animate-bounce rounded-full bg-gray-400 [animation-delay:0ms]" />
+            <span className="size-1.5 animate-bounce rounded-full bg-gray-400 [animation-delay:150ms]" />
+            <span className="size-1.5 animate-bounce rounded-full bg-gray-400 [animation-delay:300ms]" />
+          </div>
+        )}
+        <span className="text-sm text-muted-foreground">{label}</span>
       </div>
     </div>
   )
