@@ -682,6 +682,7 @@ public class SessionControllerTests
             Mock.Of<IInterventionService>(),
             Mock.Of<ISessionRecoveryService>(),
             auditService ?? Mock.Of<IAuditService>(),
+            Mock.Of<ISessionStreamPublisher>(),
             agent ?? Mock.Of<IAgent>(),
             Mock.Of<ILogger<SessionController>>());
     }

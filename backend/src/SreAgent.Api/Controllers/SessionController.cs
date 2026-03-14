@@ -37,6 +37,7 @@ public class SessionController : ControllerBase
     private readonly IInterventionService _interventionService;
     private readonly ISessionRecoveryService _recoveryService;
     private readonly IAuditService _auditService;
+    private readonly ISessionStreamPublisher _streamPublisher;
     private readonly IAgent _agent;
     private readonly ILogger<SessionController> _logger;
 
@@ -54,6 +55,7 @@ public class SessionController : ControllerBase
         IInterventionService interventionService,
         ISessionRecoveryService recoveryService,
         IAuditService auditService,
+        ISessionStreamPublisher streamPublisher,
         IAgent agent,
         ILogger<SessionController> logger)
     {
@@ -70,6 +72,7 @@ public class SessionController : ControllerBase
         _interventionService = interventionService;
         _recoveryService = recoveryService;
         _auditService = auditService;
+        _streamPublisher = streamPublisher;
         _agent = agent;
         _logger = logger;
     }
@@ -139,6 +142,46 @@ public class SessionController : ControllerBase
             detail.AgentSteps = count;
 
         return Ok(detail);
+    }
+
+    [HttpGet("/api/sessions/{sessionId:guid}/stream")]
+    public async Task GetSessionStream(Guid sessionId, CancellationToken ct)
+    {
+        var session = await _sessionRepository.GetAsync(sessionId, ct);
+        if (session == null)
+        {
+            HttpContext.Response.StatusCode = 404;
+            return;
+        }
+
+        Response.Headers["Cache-Control"] = "no-cache";
+        Response.Headers["Connection"] = "keep-alive";
+        Response.Headers["X-Accel-Buffering"] = "no";
+        Response.ContentType = "text/event-stream";
+
+        var serializerOptions = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+
+        try
+        {
+            await foreach (var evt in _streamPublisher.SubscribeAsync(sessionId, ct))
+            {
+                var payload = new
+                {
+                    evt.EventType,
+                    evt.SessionId,
+                    evt.Timestamp,
+                    evt.Payload
+                };
+                var json = JsonSerializer.Serialize(payload, serializerOptions);
+                await Response.WriteAsync($"event: {evt.EventType}\n", ct);
+                await Response.WriteAsync($"data: {json}\n\n", ct);
+                await Response.Body.FlushAsync(ct);
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Client disconnected
+        }
     }
 
     [HttpGet("/api/sessions/{sessionId:guid}/timeline")]

@@ -189,6 +189,20 @@ export interface DashboardSnapshotEvent {
   activities: DashboardActivitiesResponse
 }
 
+export type SessionStreamEventType =
+  | "agent.started"
+  | "agent.completed"
+  | "tool.started"
+  | "tool.completed"
+  | "session.ended"
+
+export interface SessionStreamEvent {
+  eventType: SessionStreamEventType
+  sessionId: string
+  timestamp: string
+  payload?: Record<string, unknown>
+}
+
 export interface ApprovalPendingItem {
   sessionId: string
   alertName: string | null

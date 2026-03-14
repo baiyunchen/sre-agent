@@ -273,6 +273,97 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /api/sessions/{sessionId}/stream:
+    get:
+      tags: [sessions]
+      summary: Subscribe per-session execution SSE stream
+      description: |
+        HITL: Real-time execution events for a session.
+        Event types: agent.started, agent.completed, tool.started, tool.completed, session.ended.
+      parameters:
+        - in: path
+          name: sessionId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: SSE stream opened
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/SessionStreamEvent'
+        '404':
+          description: Session not found
+  /api/sessions/{sessionId}/tool-invocations/{invocationId}/approve:
+    post:
+      tags: [sessions]
+      summary: Approve a pending tool invocation
+      description: HITL: Approve a tool that requires human approval before execution.
+      parameters:
+        - in: path
+          name: sessionId
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: path
+          name: invocationId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ToolApprovalDecisionRequest'
+      responses:
+        '200':
+          description: Approval accepted, tool execution continues
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToolApprovalDecisionResponse'
+        '404':
+          description: Session or invocation not found
+        '400':
+          description: Invocation not pending approval
+  /api/sessions/{sessionId}/tool-invocations/{invocationId}/reject:
+    post:
+      tags: [sessions]
+      summary: Reject a pending tool invocation
+      description: HITL: Reject a tool that requires human approval.
+      parameters:
+        - in: path
+          name: sessionId
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: path
+          name: invocationId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ToolApprovalDecisionRequest'
+      responses:
+        '200':
+          description: Rejection accepted, tool skipped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToolApprovalDecisionResponse'
+        '404':
+          description: Session or invocation not found
+        '400':
+          description: Invocation not pending approval
   /api/dashboard/stats:
     get:
       tags: [dashboard]
@@ -971,6 +1062,43 @@ components:
             $ref: '#/components/schemas/ApprovalHistoryItem'
         total:
           type: integer
+    SessionStreamEvent:
+      type: object
+      required: [eventType, sessionId, timestamp]
+      properties:
+        eventType:
+          type: string
+          enum: [agent.started, agent.completed, tool.started, tool.completed, session.ended]
+        sessionId:
+          type: string
+          format: uuid
+        timestamp:
+          type: string
+          format: date-time
+        payload:
+          type: object
+          description: Event-specific payload (agentRunId, invocationId, toolName, etc.)
+    ToolApprovalDecisionRequest:
+      type: object
+      properties:
+        approverId:
+          type: string
+        comment:
+          type: string
+          nullable: true
+    ToolApprovalDecisionResponse:
+      type: object
+      required: [invocationId, status]
+      properties:
+        invocationId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [Approved, Rejected]
+        message:
+          type: string
+          nullable: true
     ErrorResponse:
       type: object
       properties:

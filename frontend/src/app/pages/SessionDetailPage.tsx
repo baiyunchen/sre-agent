@@ -52,6 +52,7 @@ import {
   useSessionToolInvocations,
 } from "@/app/lib/hooks/useSessionDetailData"
 import { useSessionMessage } from "@/app/lib/hooks/useSessionMessage"
+import { useSessionStream } from "@/app/lib/hooks/useSessionStream"
 import { MarkdownContent } from "@/app/components/MarkdownContent"
 import type {
   TimelineEvent as TimelineEventType,
@@ -78,6 +79,10 @@ export function SessionDetailPage() {
   const toolInvocationsQuery = useSessionToolInvocations(sessionId)
   const todosQuery = useSessionTodos(sessionId)
   const sessionMessageMutation = useSessionMessage(sessionId)
+
+  const sessionStatus = sessionDetailQuery.data?.status ?? ""
+  const streamEnabled = sessionStatus === "Running"
+  useSessionStream(sessionId, streamEnabled)
 
   const tokenUsage = sessionDetailQuery.data?.tokenUsage
 

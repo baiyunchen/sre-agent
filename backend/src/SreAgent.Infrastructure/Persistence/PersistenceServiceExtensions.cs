@@ -37,7 +37,14 @@ public static class PersistenceServiceExtensions
         services.AddScoped<IApprovalService, ApprovalService>();
         services.AddScoped<ISessionRecoveryService, SessionRecoveryService>();
         services.AddScoped<IAuditService, AuditService>();
-        services.AddScoped<IExecutionTracker, PersistenceExecutionTracker>();
+        services.AddSingleton<ISessionStreamPublisher, SessionStreamPublisher>();
+        services.AddSingleton<ISessionExecutionRegistry, SessionExecutionRegistry>();
+        services.AddScoped<PersistenceExecutionTracker>();
+        services.AddScoped<IExecutionTracker>(sp => new StreamingExecutionTracker(
+            sp.GetRequiredService<PersistenceExecutionTracker>(),
+            sp.GetRequiredService<ISessionStreamPublisher>(),
+            sp.GetRequiredService<IAgentRunRepository>(),
+            sp.GetRequiredService<IToolInvocationRepository>()));
 
         // Register background services
         services.AddHostedService<DataCleanupService>();
