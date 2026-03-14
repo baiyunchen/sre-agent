@@ -9,6 +9,7 @@ using SreAgent.Framework.Abstractions;
 using SreAgent.Framework.Agents;
 using SreAgent.Framework.Contexts;
 using SreAgent.Framework.Contexts.Trimmers;
+using SreAgent.Api.Services;
 using SreAgent.Framework.Providers;
 using SreAgent.Infrastructure.Persistence;
 using SreAgent.Repository;
@@ -62,7 +63,8 @@ try
 
     // 注册基础服务
     builder.Services.AddSingleton<ITodoService, TodoService>();
-    builder.Services.AddSingleton(_ => ModelProvider.AliyunBailian());
+    builder.Services.AddSingleton<IModelProviderAccessor>(
+        _ => new ModelProviderAccessor(WellKnownModelProviders.AliyunBailian));
     // IContextStore is registered via AddPersistence() above (PostgresContextStore)
     builder.Services.AddSingleton<ITokenEstimator, SimpleTokenEstimator>();
 
@@ -117,7 +119,7 @@ try
     // 注册 Agent（scoped，因为诊断工具依赖 scoped 的 DbContext 和 Service）
     builder.Services.AddScoped<IAgent>(sp =>
         SreCoordinatorAgent.Create(
-            sp.GetRequiredService<ModelProvider>(),
+            sp.GetRequiredService<IModelProviderAccessor>().Current,
             sp.GetRequiredService<ITodoService>(),
             sp.GetRequiredService<ICloudWatchService>(),
             sp.GetService<IKnowledgeBaseService>(),

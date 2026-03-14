@@ -11,6 +11,9 @@ import {
   CheckCircle2,
   Eye,
   EyeOff,
+  Loader2,
+  AlertCircle,
+  RefreshCw,
 } from "lucide-react"
 import {
   Card,
@@ -34,11 +37,53 @@ import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { Separator } from "@/components/ui/separator"
+import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "sonner"
+import { useLlmConfig, useLlmProviders, useUpdateLlmConfig } from "@/app/lib/hooks/useLlmConfig"
+
+const CAPABILITY_LABELS: Record<string, string> = {
+  Large: "Large (复杂推理)",
+  Medium: "Medium (一般任务)",
+  Small: "Small (快速响应)",
+  Reasoning: "Reasoning (推理规划)",
+  Coding: "Coding (代码生成)",
+}
 
 export function SettingsPage() {
   const [showApiKey, setShowApiKey] = useState(false)
   const [showSlackToken, setShowSlackToken] = useState(false)
+  const [selectedProvider, setSelectedProvider] = useState<string | null>(null)
+  const [apiKeyInput, setApiKeyInput] = useState("")
+
+  const llmConfig = useLlmConfig()
+  const llmProviders = useLlmProviders()
+  const updateLlm = useUpdateLlmConfig()
+
+  const currentProvider = selectedProvider ?? llmConfig.data?.provider ?? ""
+
+  const handleLlmSave = () => {
+    if (!currentProvider) return
+    updateLlm.mutate(
+      {
+        provider: currentProvider,
+        apiKey: apiKeyInput || undefined,
+      },
+      {
+        onSuccess: () => {
+          setSelectedProvider(null)
+          setApiKeyInput("")
+          toast.success("LLM configuration updated successfully!", {
+            description: `Provider switched to ${currentProvider}`,
+          })
+        },
+        onError: (err) => {
+          toast.error("Failed to update LLM configuration", {
+            description: err.message,
+          })
+        },
+      },
+    )
+  }
 
   const handleSave = () => {
     toast.success("Settings saved successfully!", {
@@ -124,83 +169,175 @@ export function SettingsPage() {
               </TabsContent>
 
               <TabsContent value="llm" className="m-0 flex flex-col gap-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>LLM Configuration</CardTitle>
-                    <CardDescription>
-                      Configure AI model providers and parameters
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="flex flex-col gap-4">
-                    <div className="flex flex-col gap-2">
-                      <Label htmlFor="model-provider">Model Provider</Label>
-                      <Select defaultValue="aliyun">
-                        <SelectTrigger id="model-provider">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="aliyun">
-                            Aliyun Bailian (通义千问)
-                          </SelectItem>
-                          <SelectItem value="zhipu">Zhipu AI (智谱清言)</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="flex flex-col gap-2">
-                      <Label htmlFor="api-key">API Key</Label>
-                      <div className="flex gap-2">
-                        <Input
-                          id="api-key"
-                          type={showApiKey ? "text" : "password"}
-                          defaultValue="sk-abc123...xyz789"
-                          className="font-mono"
-                        />
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          onClick={() => setShowApiKey(!showApiKey)}
-                        >
-                          {showApiKey ? (
-                            <EyeOff className="size-4" />
-                          ) : (
-                            <Eye className="size-4" />
+                {llmConfig.isLoading ? (
+                  <Card>
+                    <CardHeader>
+                      <Skeleton className="h-6 w-48" />
+                      <Skeleton className="h-4 w-72" />
+                    </CardHeader>
+                    <CardContent className="flex flex-col gap-4">
+                      <Skeleton className="h-10 w-full" />
+                      <Skeleton className="h-10 w-full" />
+                      <Skeleton className="h-32 w-full" />
+                    </CardContent>
+                  </Card>
+                ) : llmConfig.isError ? (
+                  <Card>
+                    <CardContent className="flex flex-col items-center gap-4 py-12">
+                      <AlertCircle className="size-10 text-destructive" />
+                      <p className="text-sm text-muted-foreground">
+                        Failed to load LLM configuration: {llmConfig.error.message}
+                      </p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => llmConfig.refetch()}
+                      >
+                        <RefreshCw className="mr-2 size-4" />
+                        Retry
+                      </Button>
+                    </CardContent>
+                  </Card>
+                ) : llmConfig.data ? (
+                  <>
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>LLM Configuration</CardTitle>
+                        <CardDescription>
+                          Configure AI model providers and parameters
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent className="flex flex-col gap-4">
+                        <div className="flex flex-col gap-2">
+                          <Label htmlFor="model-provider">Model Provider</Label>
+                          <Select
+                            value={currentProvider}
+                            onValueChange={(v) => setSelectedProvider(v)}
+                          >
+                            <SelectTrigger id="model-provider">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {llmProviders.data?.providers.map((p) => (
+                                <SelectItem key={p.name} value={p.name}>
+                                  {p.displayName}
+                                </SelectItem>
+                              )) ?? (
+                                <>
+                                  <SelectItem value="AliyunBailian">
+                                    Aliyun Bailian (通义千问)
+                                  </SelectItem>
+                                  <SelectItem value="Zhipu">
+                                    Zhipu AI (智谱清言)
+                                  </SelectItem>
+                                </>
+                              )}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="flex flex-col gap-2">
+                          <Label htmlFor="base-url">Base URL</Label>
+                          <Input
+                            id="base-url"
+                            value={llmConfig.data.baseUrl}
+                            disabled
+                            className="font-mono text-xs"
+                          />
+                        </div>
+
+                        <div className="flex flex-col gap-2">
+                          <div className="flex items-center gap-2">
+                            <Label htmlFor="api-key">API Key</Label>
+                            <Badge
+                              className={
+                                llmConfig.data.apiKeyConfigured
+                                  ? "bg-emerald-500"
+                                  : "bg-destructive"
+                              }
+                            >
+                              {llmConfig.data.apiKeyConfigured
+                                ? "Configured"
+                                : "Not Configured"}
+                            </Badge>
+                          </div>
+                          {llmConfig.data.apiKeyHint && (
+                            <p className="text-xs text-muted-foreground font-mono">
+                              Current: {llmConfig.data.apiKeyHint}
+                            </p>
                           )}
-                        </Button>
-                      </div>
+                          <div className="flex gap-2">
+                            <Input
+                              id="api-key"
+                              type={showApiKey ? "text" : "password"}
+                              placeholder="Enter new API key to update..."
+                              value={apiKeyInput}
+                              onChange={(e) => setApiKeyInput(e.target.value)}
+                              className="font-mono"
+                            />
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              onClick={() => setShowApiKey(!showApiKey)}
+                            >
+                              {showApiKey ? (
+                                <EyeOff className="size-4" />
+                              ) : (
+                                <Eye className="size-4" />
+                              )}
+                            </Button>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-base">Model Capability Mapping</CardTitle>
+                        <CardDescription>
+                          Each capability maps to a specific model determined by the provider
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="rounded-md border">
+                          <div className="grid grid-cols-2 gap-0 border-b bg-muted/50 px-4 py-2 text-sm font-medium">
+                            <span>Capability</span>
+                            <span>Model</span>
+                          </div>
+                          {Object.entries(llmConfig.data.models).map(
+                            ([capability, model]) => (
+                              <div
+                                key={capability}
+                                className="grid grid-cols-2 gap-0 border-b last:border-b-0 px-4 py-2.5 text-sm"
+                              >
+                                <span className="text-muted-foreground">
+                                  {CAPABILITY_LABELS[capability] ?? capability}
+                                </span>
+                                <span className="font-mono text-xs">
+                                  {model}
+                                </span>
+                              </div>
+                            ),
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        onClick={handleLlmSave}
+                        disabled={updateLlm.isPending}
+                      >
+                        {updateLlm.isPending ? (
+                          <Loader2 className="size-4 animate-spin" />
+                        ) : (
+                          <Save className="size-4" />
+                        )}
+                        Save LLM Settings
+                      </Button>
                     </div>
-                    <div className="flex flex-col gap-2">
-                      <Label htmlFor="model-name">Model Name</Label>
-                      <Select defaultValue="qwen-plus">
-                        <SelectTrigger id="model-name">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="qwen-plus">qwen-plus</SelectItem>
-                          <SelectItem value="qwen-turbo">qwen-turbo</SelectItem>
-                          <SelectItem value="qwen-max">qwen-max</SelectItem>
-                          <SelectItem value="glm-4">glm-4</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <div className="flex flex-col gap-2">
-                        <Label htmlFor="temperature">Temperature</Label>
-                        <Input
-                          id="temperature"
-                          type="number"
-                          defaultValue="0.7"
-                          step="0.1"
-                          min="0"
-                          max="2"
-                        />
-                      </div>
-                      <div className="flex flex-col gap-2">
-                        <Label htmlFor="max-tokens">Max Tokens</Label>
-                        <Input id="max-tokens" type="number" defaultValue="4096" />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+                  </>
+                ) : null}
               </TabsContent>
 
               <TabsContent value="slack" className="m-0 flex flex-col gap-6">

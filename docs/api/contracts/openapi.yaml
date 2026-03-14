@@ -14,6 +14,8 @@ tags:
     description: Session query APIs
   - name: dashboard
     description: Dashboard aggregation APIs
+  - name: settings
+    description: System configuration APIs
 paths:
   /api/sre/analyze:
     post:
@@ -563,6 +565,50 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /api/settings/llm:
+    get:
+      tags: [settings]
+      summary: Get current LLM configuration
+      responses:
+        '200':
+          description: LLM configuration returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LlmConfigResponse'
+    put:
+      tags: [settings]
+      summary: Update LLM configuration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LlmConfigUpdateRequest'
+      responses:
+        '200':
+          description: LLM configuration updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LlmConfigResponse'
+        '400':
+          description: Invalid configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/settings/llm/providers:
+    get:
+      tags: [settings]
+      summary: Get available LLM providers
+      responses:
+        '200':
+          description: Provider list returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LlmProvidersResponse'
 components:
   schemas:
     AnalyzeRequest:
@@ -1099,6 +1145,58 @@ components:
         message:
           type: string
           nullable: true
+    LlmConfigResponse:
+      type: object
+      required: [provider, baseUrl, apiKeyConfigured, models]
+      properties:
+        provider:
+          type: string
+        baseUrl:
+          type: string
+        apiKeyConfigured:
+          type: boolean
+        apiKeyHint:
+          type: string
+          nullable: true
+          description: Masked key hint (e.g. "***SCOPE_API_KEY")
+        models:
+          type: object
+          additionalProperties:
+            type: string
+          description: Capability name to model name mapping
+    LlmConfigUpdateRequest:
+      type: object
+      required: [provider]
+      properties:
+        provider:
+          type: string
+          description: Provider name (e.g. "AliyunBailian", "Zhipu")
+        apiKey:
+          type: string
+          nullable: true
+          description: API key (optional, keep existing if not provided)
+    LlmProviderInfo:
+      type: object
+      required: [name, displayName, baseUrl, models]
+      properties:
+        name:
+          type: string
+        displayName:
+          type: string
+        baseUrl:
+          type: string
+        models:
+          type: object
+          additionalProperties:
+            type: string
+    LlmProvidersResponse:
+      type: object
+      required: [providers]
+      properties:
+        providers:
+          type: array
+          items:
+            $ref: '#/components/schemas/LlmProviderInfo'
     ErrorResponse:
       type: object
       properties:

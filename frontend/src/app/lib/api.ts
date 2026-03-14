@@ -9,6 +9,9 @@ import type {
   DashboardActivitiesResponse,
   DashboardActiveSessionsResponse,
   DashboardStatsResponse,
+  LlmConfigResponse,
+  LlmConfigUpdateRequest,
+  LlmProvidersResponse,
   SessionDetailResponse,
   SessionListResponse,
   SessionDiagnosisResponse,
@@ -404,6 +407,52 @@ export async function rejectToolInvocation(
   }
 
   return (await response.json()) as ToolApprovalDecisionResponse
+}
+
+export async function fetchLlmConfig(): Promise<LlmConfigResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/settings/llm`)
+  if (!response.ok) {
+    const fallbackMessage = `获取 LLM 配置失败: ${response.status}`
+    const errorPayload = (await response.json().catch(() => null)) as
+      | { error?: string }
+      | null
+    throw new Error(errorPayload?.error ?? fallbackMessage)
+  }
+
+  return (await response.json()) as LlmConfigResponse
+}
+
+export async function updateLlmConfig(
+  payload: LlmConfigUpdateRequest,
+): Promise<LlmConfigResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/settings/llm`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  })
+
+  if (!response.ok) {
+    const fallbackMessage = `更新 LLM 配置失败: ${response.status}`
+    const errorPayload = (await response.json().catch(() => null)) as
+      | { error?: string }
+      | null
+    throw new Error(errorPayload?.error ?? fallbackMessage)
+  }
+
+  return (await response.json()) as LlmConfigResponse
+}
+
+export async function fetchLlmProviders(): Promise<LlmProvidersResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/settings/llm/providers`)
+  if (!response.ok) {
+    const fallbackMessage = `获取 LLM Provider 列表失败: ${response.status}`
+    const errorPayload = (await response.json().catch(() => null)) as
+      | { error?: string }
+      | null
+    throw new Error(errorPayload?.error ?? fallbackMessage)
+  }
+
+  return (await response.json()) as LlmProvidersResponse
 }
 
 export async function resumeSession(

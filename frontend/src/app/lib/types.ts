@@ -266,3 +266,27 @@ export interface CreateApprovalRuleRequest {
   ruleType: "always-allow" | "always-deny" | "require-approval"
   createdBy?: string
 }
+
+export interface LlmConfigResponse {
+  provider: string
+  baseUrl: string
+  apiKeyConfigured: boolean
+  apiKeyHint: string | null
+  models: Record<string, string>
+}
+
+export interface LlmConfigUpdateRequest {
+  provider: string
+  apiKey?: string
+}
+
+export interface LlmProviderInfo {
+  name: string
+  displayName: string
+  baseUrl: string
+  models: Record<string, string>
+}
+
+export interface LlmProvidersResponse {
+  providers: LlmProviderInfo[]
+}
