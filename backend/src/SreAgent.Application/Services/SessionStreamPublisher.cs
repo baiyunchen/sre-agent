@@ -6,16 +6,20 @@ namespace SreAgent.Application.Services;
 
 /// <summary>
 /// In-memory implementation of ISessionStreamPublisher using channels per session.
+/// Supports multiple concurrent subscribers per session.
 /// </summary>
 public sealed class SessionStreamPublisher : ISessionStreamPublisher
 {
-    private readonly ConcurrentDictionary<Guid, Channel<SessionStreamEvent>> _channels = new();
+    private readonly ConcurrentDictionary<Guid, ConcurrentDictionary<Guid, Channel<SessionStreamEvent>>> _sessions = new();
 
     public ValueTask PublishAsync(SessionStreamEvent evt, CancellationToken ct = default)
     {
-        if (_channels.TryGetValue(evt.SessionId, out var channel))
+        if (!_sessions.TryGetValue(evt.SessionId, out var subscribers))
+            return ValueTask.CompletedTask;
+
+        foreach (var (_, channel) in subscribers)
         {
-            return channel.Writer.WriteAsync(evt, ct);
+            channel.Writer.TryWrite(evt);
         }
         return ValueTask.CompletedTask;
     }
@@ -24,12 +28,15 @@ public sealed class SessionStreamPublisher : ISessionStreamPublisher
         Guid sessionId,
         [EnumeratorCancellation] CancellationToken ct = default)
     {
+        var subscriberId = Guid.NewGuid();
         var channel = Channel.CreateUnbounded<SessionStreamEvent>(new UnboundedChannelOptions
         {
-            SingleReader = false,
+            SingleReader = true,
             SingleWriter = false
         });
-        _channels[sessionId] = channel;
+
+        var subscribers = _sessions.GetOrAdd(sessionId, _ => new ConcurrentDictionary<Guid, Channel<SessionStreamEvent>>());
+        subscribers[subscriberId] = channel;
 
         try
         {
@@ -40,7 +47,9 @@ public sealed class SessionStreamPublisher : ISessionStreamPublisher
         }
         finally
         {
-            _channels.TryRemove(sessionId, out _);
+            subscribers.TryRemove(subscriberId, out _);
+            if (subscribers.IsEmpty)
+                _sessions.TryRemove(sessionId, out _);
         }
     }
 }

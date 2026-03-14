@@ -11,7 +11,12 @@ public sealed class SessionExecutionRegistry : ISessionExecutionRegistry
 
     public void Register(Guid sessionId, CancellationTokenSource cts)
     {
-        _sources[sessionId] = cts;
+        _sources.AddOrUpdate(sessionId, cts, (_, oldCts) =>
+        {
+            try { oldCts.Cancel(); oldCts.Dispose(); }
+            catch { /* best effort */ }
+            return cts;
+        });
     }
 
     public CancellationToken? GetToken(Guid sessionId)

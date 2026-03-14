@@ -35,7 +35,9 @@ public class ToolInvocationRepository : IToolInvocationRepository
 
     public async Task<ToolInvocationEntity?> GetByIdAsync(Guid id, CancellationToken ct = default)
     {
-        return await _context.ToolInvocations.FirstOrDefaultAsync(i => i.Id == id, ct);
+        return await _context.ToolInvocations
+            .Include(i => i.AgentRun)
+            .FirstOrDefaultAsync(i => i.Id == id, ct);
     }
 
     public async Task<IReadOnlyList<ToolInvocationEntity>> GetByAgentRunAsync(Guid agentRunId, CancellationToken ct = default)

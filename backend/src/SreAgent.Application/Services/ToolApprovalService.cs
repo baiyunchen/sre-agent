@@ -40,6 +40,8 @@ public sealed class ToolApprovalService : IToolApprovalChecker, IToolApprovalRes
         };
     }
 
+    private static readonly TimeSpan ApprovalTimeout = TimeSpan.FromMinutes(30);
+
     public async Task<ToolApprovalResult> RequestApprovalAsync(
         Guid sessionId,
         Guid invocationId,
@@ -49,13 +51,21 @@ public sealed class ToolApprovalService : IToolApprovalChecker, IToolApprovalRes
     {
         using (var scope = _scopeFactory.CreateScope())
         {
-            var repo = scope.ServiceProvider.GetRequiredService<IToolInvocationRepository>();
-            var invocation = await repo.GetByIdAsync(invocationId, ct);
+            var toolRepo = scope.ServiceProvider.GetRequiredService<IToolInvocationRepository>();
+            var invocation = await toolRepo.GetByIdAsync(invocationId, ct);
             if (invocation == null)
                 throw new InvalidOperationException($"Tool invocation {invocationId} not found");
 
             invocation.ApprovalStatus = "PendingApproval";
-            await repo.UpdateAsync(invocation, ct);
+            await toolRepo.UpdateAsync(invocation, ct);
+
+            var sessionRepo = scope.ServiceProvider.GetRequiredService<ISessionRepository>();
+            var session = await sessionRepo.GetAsync(sessionId, ct);
+            if (session != null)
+            {
+                session.Status = "WaitingApproval";
+                await sessionRepo.UpdateAsync(session, ct);
+            }
         }
 
         await _streamPublisher.PublishAsync(new SessionStreamEvent
@@ -76,8 +86,14 @@ public sealed class ToolApprovalService : IToolApprovalChecker, IToolApprovalRes
 
         try
         {
-            using var reg = ct.Register(() => tcs.TrySetCanceled(ct));
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(ApprovalTimeout);
+            using var reg = cts.Token.Register(() => tcs.TrySetCanceled(cts.Token));
             return await tcs.Task;
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            return new ToolApprovalResult(false, "Approval timed out");
         }
         finally
         {
@@ -85,9 +101,6 @@ public sealed class ToolApprovalService : IToolApprovalChecker, IToolApprovalRes
         }
     }
 
-    /// <summary>
-    /// Resolve a pending approval. Called by the API when user approves or rejects.
-    /// </summary>
     public async Task ResolveApprovalAsync(Guid invocationId, bool approved, string? reason, string? approverId, CancellationToken ct = default)
     {
         if (!_pendingApprovals.TryGetValue(invocationId, out var tcs))
@@ -95,14 +108,30 @@ public sealed class ToolApprovalService : IToolApprovalChecker, IToolApprovalRes
 
         using (var scope = _scopeFactory.CreateScope())
         {
-            var repo = scope.ServiceProvider.GetRequiredService<IToolInvocationRepository>();
-            var invocation = await repo.GetByIdAsync(invocationId, ct);
+            var toolRepo = scope.ServiceProvider.GetRequiredService<IToolInvocationRepository>();
+            var invocation = await toolRepo.GetByIdAsync(invocationId, ct);
             if (invocation != null)
             {
                 invocation.ApprovalStatus = approved ? "Approved" : "Rejected";
                 invocation.ApprovedBy = approverId;
                 invocation.ApprovedAt = DateTime.UtcNow;
-                await repo.UpdateAsync(invocation, ct);
+                await toolRepo.UpdateAsync(invocation, ct);
+
+                var sessionRepo = scope.ServiceProvider.GetRequiredService<ISessionRepository>();
+                var session = await sessionRepo.GetAsync(invocation.AgentRun.SessionId, ct);
+                if (session != null && session.Status == "WaitingApproval")
+                {
+                    session.Status = "Running";
+                    await sessionRepo.UpdateAsync(session, ct);
+                }
+
+                var auditService = scope.ServiceProvider.GetRequiredService<IAuditService>();
+                await auditService.LogAsync(
+                    invocation.AgentRun.SessionId,
+                    approved ? "ToolApproved" : "ToolRejected",
+                    $"Tool '{invocation.ToolName}' {(approved ? "approved" : "rejected")} by {approverId}: {reason}",
+                    new { invocationId, toolName = invocation.ToolName, approved, reason },
+                    approverId, null, ct);
             }
         }
 
