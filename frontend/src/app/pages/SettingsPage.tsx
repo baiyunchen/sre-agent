@@ -54,27 +54,57 @@ export function SettingsPage() {
   const [showSlackToken, setShowSlackToken] = useState(false)
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null)
   const [apiKeyInput, setApiKeyInput] = useState("")
+  const [modelOverrides, setModelOverrides] = useState<Record<string, string>>({})
+  const [activeTab, setActiveTab] = useState("general")
 
   const llmConfig = useLlmConfig()
   const llmProviders = useLlmProviders()
   const updateLlm = useUpdateLlmConfig()
 
   const currentProvider = selectedProvider ?? llmConfig.data?.provider ?? ""
+  const currentProviderInfo = llmProviders.data?.providers.find(
+    (p) => p.name === currentProvider,
+  )
+  const isProviderChanged =
+    selectedProvider !== null && selectedProvider !== llmConfig.data?.provider
+
+  const baseModels: Record<string, string> = isProviderChanged
+    ? (currentProviderInfo?.models ?? {})
+    : (llmConfig.data?.models ?? {})
+
+  const handleProviderChange = (providerName: string) => {
+    setSelectedProvider(providerName)
+    setModelOverrides({})
+  }
+
+  const handleModelChange = (capability: string, model: string) => {
+    setModelOverrides((prev) => ({ ...prev, [capability]: model }))
+  }
+
+  const getEffectiveModel = (capability: string) => {
+    return modelOverrides[capability] ?? baseModels[capability] ?? ""
+  }
 
   const handleLlmSave = () => {
     if (!currentProvider) return
+    if (isProviderChanged && !apiKeyInput.trim()) {
+      toast.error("Switching provider requires a new API key")
+      return
+    }
+
+    const hasModelChanges = Object.keys(modelOverrides).length > 0
     updateLlm.mutate(
       {
         provider: currentProvider,
         apiKey: apiKeyInput || undefined,
+        models: hasModelChanges ? modelOverrides : undefined,
       },
       {
         onSuccess: () => {
           setSelectedProvider(null)
           setApiKeyInput("")
-          toast.success("LLM configuration updated successfully!", {
-            description: `Provider switched to ${currentProvider}`,
-          })
+          setModelOverrides({})
+          toast.success("LLM configuration updated successfully!")
         },
         onError: (err) => {
           toast.error("Failed to update LLM configuration", {
@@ -99,7 +129,7 @@ export function SettingsPage() {
           <p className="text-muted-foreground">Configure your SRE Agent system</p>
         </div>
 
-        <Tabs defaultValue="general" orientation="vertical" className="gap-6">
+        <Tabs value={activeTab} onValueChange={setActiveTab} orientation="vertical" className="gap-6">
           <TabsList variant="line" className="w-48 shrink-0 gap-1">
             <TabsTrigger value="general" className="justify-start gap-2 px-3 py-2">
               <Globe className="size-4" />
@@ -199,20 +229,20 @@ export function SettingsPage() {
                     </CardContent>
                   </Card>
                 ) : llmConfig.data ? (
-                  <>
-                    <Card>
-                      <CardHeader>
-                        <CardTitle>LLM Configuration</CardTitle>
-                        <CardDescription>
-                          Configure AI model providers and parameters
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent className="flex flex-col gap-4">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>LLM Configuration</CardTitle>
+                      <CardDescription>
+                        Configure AI model provider, API key, and capability model mapping
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="flex flex-col gap-6">
+                      <div className="grid gap-4 md:grid-cols-2">
                         <div className="flex flex-col gap-2">
                           <Label htmlFor="model-provider">Model Provider</Label>
                           <Select
                             value={currentProvider}
-                            onValueChange={(v) => setSelectedProvider(v)}
+                            onValueChange={handleProviderChange}
                           >
                             <SelectTrigger id="model-provider">
                               <SelectValue />
@@ -234,43 +264,43 @@ export function SettingsPage() {
                               )}
                             </SelectContent>
                           </Select>
-                        </div>
-
-                        <div className="flex flex-col gap-2">
-                          <Label htmlFor="base-url">Base URL</Label>
-                          <Input
-                            id="base-url"
-                            value={llmConfig.data.baseUrl}
-                            disabled
-                            className="font-mono text-xs"
-                          />
+                          <p className="text-xs text-muted-foreground font-mono">
+                            {currentProviderInfo?.baseUrl ?? llmConfig.data.baseUrl}
+                          </p>
                         </div>
 
                         <div className="flex flex-col gap-2">
                           <div className="flex items-center gap-2">
                             <Label htmlFor="api-key">API Key</Label>
-                            <Badge
-                              className={
-                                llmConfig.data.apiKeyConfigured
-                                  ? "bg-emerald-500"
-                                  : "bg-destructive"
-                              }
-                            >
-                              {llmConfig.data.apiKeyConfigured
-                                ? "Configured"
-                                : "Not Configured"}
-                            </Badge>
+                            {isProviderChanged ? (
+                              <Badge variant="outline">
+                                Required for new provider
+                              </Badge>
+                            ) : (
+                              <Badge
+                                className={
+                                  llmConfig.data.apiKeyConfigured
+                                    ? "bg-emerald-500"
+                                    : "bg-destructive"
+                                }
+                              >
+                                {llmConfig.data.apiKeyConfigured
+                                  ? "Configured"
+                                  : "Not Configured"}
+                              </Badge>
+                            )}
                           </div>
-                          {llmConfig.data.apiKeyHint && (
-                            <p className="text-xs text-muted-foreground font-mono">
-                              Current: {llmConfig.data.apiKeyHint}
-                            </p>
-                          )}
                           <div className="flex gap-2">
                             <Input
                               id="api-key"
                               type={showApiKey ? "text" : "password"}
-                              placeholder="Enter new API key to update..."
+                              placeholder={
+                                isProviderChanged
+                                  ? `Enter API key for ${currentProviderInfo?.displayName ?? currentProvider}...`
+                                  : llmConfig.data.apiKeyHint
+                                    ? `Current: ${llmConfig.data.apiKeyHint}`
+                                    : "Enter API key..."
+                              }
                               value={apiKeyInput}
                               onChange={(e) => setApiKeyInput(e.target.value)}
                               className="font-mono"
@@ -287,56 +317,83 @@ export function SettingsPage() {
                               )}
                             </Button>
                           </div>
+                          <p className="text-xs text-muted-foreground">
+                            {isProviderChanged
+                              ? "Switching provider requires entering a new API key"
+                              : "Leave empty to keep current key"}
+                          </p>
                         </div>
-                      </CardContent>
-                    </Card>
+                      </div>
 
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="text-base">Model Capability Mapping</CardTitle>
-                        <CardDescription>
-                          Each capability maps to a specific model determined by the provider
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="rounded-md border">
-                          <div className="grid grid-cols-2 gap-0 border-b bg-muted/50 px-4 py-2 text-sm font-medium">
-                            <span>Capability</span>
-                            <span>Model</span>
-                          </div>
-                          {Object.entries(llmConfig.data.models).map(
-                            ([capability, model]) => (
-                              <div
-                                key={capability}
-                                className="grid grid-cols-2 gap-0 border-b last:border-b-0 px-4 py-2.5 text-sm"
-                              >
-                                <span className="text-muted-foreground">
-                                  {CAPABILITY_LABELS[capability] ?? capability}
-                                </span>
-                                <span className="font-mono text-xs">
-                                  {model}
-                                </span>
-                              </div>
-                            ),
+                      <Separator />
+
+                      <div className="flex flex-col gap-3">
+                        <div>
+                          <Label className="text-base">Model Capability Mapping</Label>
+                          <p className="text-sm text-muted-foreground">
+                            Select which model to use for each capability level
+                          </p>
+                        </div>
+                        <div className="grid gap-3">
+                          {Object.entries(baseModels).map(
+                            ([capability]) => {
+                              const availableModels =
+                                currentProviderInfo?.availableModels ??
+                                [...new Set(Object.values(baseModels))]
+                              const effectiveModel = getEffectiveModel(capability)
+                              return (
+                                <div
+                                  key={capability}
+                                  className="grid grid-cols-[1fr_1.5fr] items-center gap-4"
+                                >
+                                  <Label className="text-sm text-muted-foreground">
+                                    {CAPABILITY_LABELS[capability] ?? capability}
+                                  </Label>
+                                  <Select
+                                    value={effectiveModel}
+                                    onValueChange={(v) =>
+                                      handleModelChange(capability, v)
+                                    }
+                                  >
+                                    <SelectTrigger className="font-mono text-xs">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {availableModels.map((m) => (
+                                        <SelectItem
+                                          key={m}
+                                          value={m}
+                                          className="font-mono text-xs"
+                                        >
+                                          {m}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              )
+                            },
                           )}
                         </div>
-                      </CardContent>
-                    </Card>
+                      </div>
 
-                    <div className="flex justify-end gap-2">
-                      <Button
-                        onClick={handleLlmSave}
-                        disabled={updateLlm.isPending}
-                      >
-                        {updateLlm.isPending ? (
-                          <Loader2 className="size-4 animate-spin" />
-                        ) : (
-                          <Save className="size-4" />
-                        )}
-                        Save LLM Settings
-                      </Button>
-                    </div>
-                  </>
+                      <Separator />
+
+                      <div className="flex justify-end">
+                        <Button
+                          onClick={handleLlmSave}
+                          disabled={updateLlm.isPending}
+                        >
+                          {updateLlm.isPending ? (
+                            <Loader2 className="size-4 animate-spin" />
+                          ) : (
+                            <Save className="size-4" />
+                          )}
+                          Save Changes
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
                 ) : null}
               </TabsContent>
 
@@ -610,13 +667,15 @@ export function SettingsPage() {
                 </Card>
               </TabsContent>
 
-              <div className="flex justify-end gap-2">
-                <Button variant="outline">Reset to Defaults</Button>
-                <Button onClick={handleSave}>
-                  <Save className="size-4" />
-                  Save Changes
-                </Button>
-              </div>
+              {activeTab !== "llm" && (
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline">Reset to Defaults</Button>
+                  <Button onClick={handleSave}>
+                    <Save className="size-4" />
+                    Save Changes
+                  </Button>
+                </div>
+              )}
             </div>
         </Tabs>
       </div>

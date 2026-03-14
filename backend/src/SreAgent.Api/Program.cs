@@ -133,9 +133,11 @@ try
     using (var scope = app.Services.CreateScope())
     {
         var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var llmSettingsService = scope.ServiceProvider.GetRequiredService<ILlmSettingsService>();
         try
         {
             await dbContext.Database.MigrateAsync();
+            await llmSettingsService.InitializeFromPersistenceAsync();
             Log.Information("Database migration applied successfully");
         }
         catch (Exception ex)

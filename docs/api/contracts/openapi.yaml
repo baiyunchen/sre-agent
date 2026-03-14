@@ -1174,10 +1174,16 @@ components:
         apiKey:
           type: string
           nullable: true
-          description: API key (optional, keep existing if not provided)
+          description: API key (required when switching provider; optional when updating current provider)
+        models:
+          type: object
+          nullable: true
+          additionalProperties:
+            type: string
+          description: Optional capability-to-model overrides
     LlmProviderInfo:
       type: object
-      required: [name, displayName, baseUrl, models]
+      required: [name, displayName, baseUrl, models, availableModels]
       properties:
         name:
           type: string
@@ -1189,6 +1195,11 @@ components:
           type: object
           additionalProperties:
             type: string
+        availableModels:
+          type: array
+          items:
+            type: string
+          description: All selectable model names for this provider
     LlmProvidersResponse:
       type: object
       required: [providers]

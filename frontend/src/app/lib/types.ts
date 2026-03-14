@@ -278,6 +278,7 @@ export interface LlmConfigResponse {
 export interface LlmConfigUpdateRequest {
   provider: string
   apiKey?: string
+  models?: Record<string, string>
 }
 
 export interface LlmProviderInfo {
@@ -285,6 +286,7 @@ export interface LlmProviderInfo {
   displayName: string
   baseUrl: string
   models: Record<string, string>
+  availableModels: string[]
 }
 
 export interface LlmProvidersResponse {

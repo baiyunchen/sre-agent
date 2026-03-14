@@ -1,5 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
-using SreAgent.Framework.Providers;
+using SreAgent.Application.Services;
 
 namespace SreAgent.Api.Controllers;
 
@@ -7,155 +7,47 @@ namespace SreAgent.Api.Controllers;
 [Route("api/[controller]")]
 public class SettingsController : ControllerBase
 {
-    private readonly IModelProviderAccessor _providerAccessor;
+    private readonly ILlmSettingsService _llmSettingsService;
 
-    public SettingsController(IModelProviderAccessor providerAccessor)
+    public SettingsController(ILlmSettingsService llmSettingsService)
     {
-        _providerAccessor = providerAccessor;
+        _llmSettingsService = llmSettingsService;
     }
 
     [HttpGet("/api/settings/llm")]
-    public IActionResult GetLlmConfig()
+    public async Task<IActionResult> GetLlmConfig(CancellationToken ct = default)
     {
-        var provider = _providerAccessor.Current;
-        var options = provider.Options;
-
-        return Ok(BuildLlmConfigResponse(options));
+        var config = await _llmSettingsService.GetCurrentAsync(ct);
+        return Ok(config);
     }
 
     [HttpPut("/api/settings/llm")]
-    public IActionResult UpdateLlmConfig([FromBody] LlmConfigUpdateRequest? request)
+    public async Task<IActionResult> UpdateLlmConfig([FromBody] LlmConfigUpdateRequest? request, CancellationToken ct = default)
     {
         if (request == null)
             return BadRequest(new { error = "Request body is required" });
 
-        if (string.IsNullOrWhiteSpace(request.Provider))
-            return BadRequest(new { error = "provider is required" });
-
-        var knownOptions = GetWellKnownProvider(request.Provider);
-        if (knownOptions == null)
-            return BadRequest(new { error = $"Unknown provider: {request.Provider}. Available: AliyunBailian, Zhipu" });
-
-        ModelProviderOptions finalOptions;
-        if (!string.IsNullOrWhiteSpace(request.ApiKey))
+        try
         {
-            finalOptions = new ModelProviderOptions
+            var updated = await _llmSettingsService.UpdateAsync(new LlmConfigUpdateInput
             {
-                Name = knownOptions.Name,
-                BaseUrl = knownOptions.BaseUrl,
+                Provider = request.Provider,
                 ApiKey = request.ApiKey,
-                ApiKeyEnvironmentVariable = knownOptions.ApiKeyEnvironmentVariable,
-                Models = knownOptions.Models,
-                Pricing = knownOptions.Pricing,
-                TokenLimits = knownOptions.TokenLimits,
-            };
+                Models = request.Models,
+            }, ct);
+            return Ok(updated);
         }
-        else
+        catch (ArgumentException ex)
         {
-            finalOptions = knownOptions;
+            return BadRequest(new { error = ex.Message });
         }
-
-        _providerAccessor.Update(finalOptions);
-
-        return Ok(BuildLlmConfigResponse(finalOptions));
     }
 
     [HttpGet("/api/settings/llm/providers")]
-    public IActionResult GetAvailableProviders()
+    public async Task<IActionResult> GetAvailableProviders(CancellationToken ct = default)
     {
-        var providers = new[]
-        {
-            BuildProviderInfo(WellKnownModelProviders.AliyunBailian, "Aliyun Bailian (通义千问)"),
-            BuildProviderInfo(WellKnownModelProviders.Zhipu, "Zhipu AI (智谱清言)"),
-        };
-
-        return Ok(new { providers });
-    }
-
-    private static object BuildLlmConfigResponse(ModelProviderOptions options)
-    {
-        bool apiKeyConfigured;
-        string? apiKeyHint = null;
-
-        try
-        {
-            var key = options.GetApiKey();
-            apiKeyConfigured = true;
-            apiKeyHint = MaskApiKey(key);
-        }
-        catch
-        {
-            apiKeyConfigured = !string.IsNullOrEmpty(options.ApiKey);
-            if (apiKeyConfigured)
-                apiKeyHint = MaskApiKey(options.ApiKey!);
-            else if (!string.IsNullOrEmpty(options.ApiKeyEnvironmentVariable))
-                apiKeyHint = $"Env: {options.ApiKeyEnvironmentVariable} (not set)";
-        }
-
-        var models = new Dictionary<string, string>();
-        foreach (var cap in Enum.GetValues<ModelCapability>())
-        {
-            try
-            {
-                models[cap.ToString()] = options.GetModel(cap);
-            }
-            catch (InvalidOperationException)
-            {
-                // capability not configured for this provider
-            }
-        }
-
-        return new
-        {
-            provider = options.Name,
-            baseUrl = options.BaseUrl,
-            apiKeyConfigured,
-            apiKeyHint,
-            models,
-        };
-    }
-
-    private static object BuildProviderInfo(ModelProviderOptions options, string displayName)
-    {
-        var models = new Dictionary<string, string>();
-        foreach (var cap in Enum.GetValues<ModelCapability>())
-        {
-            try
-            {
-                models[cap.ToString()] = options.GetModel(cap);
-            }
-            catch (InvalidOperationException)
-            {
-                // capability not configured for this provider
-            }
-        }
-
-        return new
-        {
-            name = options.Name,
-            displayName,
-            baseUrl = options.BaseUrl,
-            models,
-        };
-    }
-
-    private static ModelProviderOptions? GetWellKnownProvider(string name)
-    {
-        return name.ToLowerInvariant() switch
-        {
-            "aliyunbailian" => WellKnownModelProviders.AliyunBailian,
-            "zhipu" => WellKnownModelProviders.Zhipu,
-            _ => null,
-        };
-    }
-
-    private static string MaskApiKey(string key)
-    {
-        if (string.IsNullOrEmpty(key) || key.Length <= 3)
-            return "***";
-        if (key.Length <= 8)
-            return "***" + key[^3..];
-        return key[..3] + "***" + key[^4..];
+        var providers = await _llmSettingsService.GetProvidersAsync(ct);
+        return Ok(providers);
     }
 }
 
@@ -163,4 +55,5 @@ public record LlmConfigUpdateRequest
 {
     public string Provider { get; init; } = "";
     public string? ApiKey { get; init; }
+    public Dictionary<string, string>? Models { get; init; }
 }

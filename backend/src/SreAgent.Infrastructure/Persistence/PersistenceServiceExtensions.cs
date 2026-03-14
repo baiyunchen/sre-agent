@@ -29,12 +29,14 @@ public static class PersistenceServiceExtensions
         services.AddScoped<IInterventionRepository, InterventionRepository>();
         services.AddScoped<IAuditLogRepository, AuditLogRepository>();
         services.AddScoped<IApprovalRuleRepository, ApprovalRuleRepository>();
+        services.AddScoped<ILlmSettingsRepository, LlmSettingsRepository>();
 
         // Register application services
         services.AddScoped<IDiagnosticDataService, DiagnosticDataService>();
         services.AddScoped<ICheckpointService, CheckpointService>();
         services.AddScoped<IInterventionService, InterventionService>();
         services.AddScoped<IApprovalService, ApprovalService>();
+        services.AddScoped<ILlmSettingsService, LlmSettingsService>();
         services.AddSingleton<ToolApprovalService>();
         services.AddSingleton<IToolApprovalChecker>(sp => sp.GetRequiredService<ToolApprovalService>());
         services.AddSingleton<IToolApprovalResolver>(sp => sp.GetRequiredService<ToolApprovalService>());

@@ -16,21 +16,21 @@
    
 2. **API Key 配置区**
    - API Key 输入框（password 类型，带 show/hide 切换）
-   - Key 来源提示：显示 "From environment variable: DASHSCOPE_API_KEY" 或 "Configured via UI"
-   - 配置状态 Badge：`Configured` (绿) / `Not Configured` (红)
+   - 当前 key 仅以 masked placeholder 展示（如 `Current: sk-***0243`）
+   - 当用户切换到新 Provider 时，状态 Badge 显示 `Required for new provider`，并强制输入新 key 才能保存
 
 3. **模型映射区（Capability → Model）**
-   - 以表格或分组展示 5 种能力级别及其对应模型：
+   - 以分组下拉形式展示 5 种能力级别及其对应模型：
      - Large (复杂推理) → qwen3.5-plus
      - Medium (一般任务) → qwen3.5-plus
      - Small (快速响应) → qwen-turbo
      - Reasoning (推理规划) → qwen3.5-plus
      - Coding (代码生成) → qwen3.5-plus
-   - 只读展示（由 Provider 决定），后续迭代可支持自定义
+   - 支持编辑：每个 capability 可从 provider 的 `availableModels` 里选择
 
 4. **操作按钮**
-   - Save Changes：提交配置更新
-   - Reset to Defaults：重置为默认配置
+   - LLM Card 内只有一个 Save Changes
+   - 全局页面 Save 按钮在 LLM tab 隐藏，避免双保存入口冲突
 
 ## 交互状态
 
@@ -43,6 +43,7 @@
 
 ### 错误态
 - API 失败时在 Card 内展示错误信息 + 重试按钮
+- 切换 provider 未输入 key 时，点击保存给出明确错误 toast，不触发成功提示
 
 ### 空态
 - 不适用（总有默认配置）

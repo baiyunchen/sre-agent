@@ -1,9 +1,13 @@
 using System.Text.Json;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging.Abstractions;
 using SreAgent.Api.Controllers;
 using SreAgent.Api.Services;
+using SreAgent.Application.Services;
 using SreAgent.Framework.Providers;
+using SreAgent.Repository.Entities;
+using SreAgent.Repository.Repositories;
 using Xunit;
 
 namespace SreAgent.Api.Tests;
@@ -15,17 +19,42 @@ public class SettingsControllerTests
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
 
-    private static SettingsController CreateController(ModelProviderOptions? initialOptions = null)
+    private static (SettingsController Controller, ModelProviderAccessor Accessor) CreateController(ModelProviderOptions? initialOptions = null)
     {
         var accessor = new ModelProviderAccessor(initialOptions ?? WellKnownModelProviders.AliyunBailian);
-        return new SettingsController(accessor);
+        var repository = new InMemoryLlmSettingsRepository();
+        var service = new LlmSettingsService(accessor, repository, NullLogger<LlmSettingsService>.Instance);
+        return (new SettingsController(service), accessor);
+    }
+
+    private sealed class InMemoryLlmSettingsRepository : ILlmSettingsRepository
+    {
+        private LlmSettingsEntity? _settings;
+
+        public Task<LlmSettingsEntity?> GetAsync(CancellationToken ct = default)
+        {
+            return Task.FromResult(_settings);
+        }
+
+        public Task UpsertAsync(LlmSettingsEntity settings, CancellationToken ct = default)
+        {
+            _settings = new LlmSettingsEntity
+            {
+                Id = settings.Id,
+                ProviderName = settings.ProviderName,
+                ApiKey = settings.ApiKey,
+                ModelsJson = settings.ModelsJson,
+                UpdatedAt = settings.UpdatedAt,
+            };
+            return Task.CompletedTask;
+        }
     }
 
     [Fact]
-    public void GetLlmConfig_ShouldReturnCurrentProviderConfig()
+    public async Task GetLlmConfig_ShouldReturnCurrentProviderConfig()
     {
-        var controller = CreateController();
-        var result = controller.GetLlmConfig();
+        var (controller, _) = CreateController();
+        var result = await controller.GetLlmConfig();
 
         var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
         var json = JsonSerializer.Serialize(okResult.Value, JsonOptions);
@@ -39,10 +68,10 @@ public class SettingsControllerTests
     }
 
     [Fact]
-    public void GetLlmConfig_WithZhipu_ShouldReturnZhipuConfig()
+    public async Task GetLlmConfig_WithZhipu_ShouldReturnZhipuConfig()
     {
-        var controller = CreateController(WellKnownModelProviders.Zhipu);
-        var result = controller.GetLlmConfig();
+        var (controller, _) = CreateController(WellKnownModelProviders.Zhipu);
+        var result = await controller.GetLlmConfig();
 
         var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
         var json = JsonSerializer.Serialize(okResult.Value, JsonOptions);
@@ -55,11 +84,15 @@ public class SettingsControllerTests
     }
 
     [Fact]
-    public void UpdateLlmConfig_SwitchToZhipu_ShouldReturnZhipuConfig()
+    public async Task UpdateLlmConfig_SwitchToZhipuWithApiKey_ShouldReturnZhipuConfig()
     {
-        var controller = CreateController();
-        var request = new LlmConfigUpdateRequest { Provider = "Zhipu" };
-        var result = controller.UpdateLlmConfig(request);
+        var (controller, _) = CreateController();
+        var request = new LlmConfigUpdateRequest
+        {
+            Provider = "Zhipu",
+            ApiKey = "zhipu-test-key-123456"
+        };
+        var result = await controller.UpdateLlmConfig(request);
 
         var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
         var json = JsonSerializer.Serialize(okResult.Value, JsonOptions);
@@ -70,15 +103,91 @@ public class SettingsControllerTests
     }
 
     [Fact]
-    public void UpdateLlmConfig_WithApiKey_ShouldShowConfigured()
+    public async Task UpdateLlmConfig_SwitchProviderWithoutApiKey_ShouldReturn400()
     {
-        var controller = CreateController();
+        var (controller, _) = CreateController();
+        var result = await controller.UpdateLlmConfig(new LlmConfigUpdateRequest { Provider = "Zhipu" });
+
+        var badRequest = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+        var json = JsonSerializer.Serialize(badRequest.Value, JsonOptions);
+        json.Should().Contain("requires apiKey");
+    }
+
+    [Fact]
+    public async Task UpdateLlmConfig_SameProviderWithoutApiKey_ShouldKeepExistingApiKey()
+    {
+        var (controller, _) = CreateController();
+        await controller.UpdateLlmConfig(new LlmConfigUpdateRequest
+        {
+            Provider = "AliyunBailian",
+            ApiKey = "sk-keep-existing-123456"
+        });
+
+        var updateResult = await controller.UpdateLlmConfig(new LlmConfigUpdateRequest
+        {
+            Provider = "AliyunBailian",
+            Models = new Dictionary<string, string>
+            {
+                ["Large"] = "qwen-turbo"
+            }
+        });
+
+        var okResult = updateResult.Should().BeOfType<OkObjectResult>().Subject;
+        var json = JsonSerializer.Serialize(okResult.Value, JsonOptions);
+        var doc = JsonDocument.Parse(json);
+
+        doc.RootElement.GetProperty("apiKeyConfigured").GetBoolean().Should().BeTrue();
+        doc.RootElement.GetProperty("apiKeyHint").GetString().Should().Contain("***");
+    }
+
+    [Fact]
+    public async Task UpdateLlmConfig_UnknownCapabilityInModels_ShouldReturn400()
+    {
+        var (controller, _) = CreateController();
+        var result = await controller.UpdateLlmConfig(new LlmConfigUpdateRequest
+        {
+            Provider = "AliyunBailian",
+            ApiKey = "sk-valid-123456",
+            Models = new Dictionary<string, string>
+            {
+                ["UnknownCapability"] = "qwen-turbo"
+            }
+        });
+
+        var badRequest = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+        var json = JsonSerializer.Serialize(badRequest.Value, JsonOptions);
+        json.Should().Contain("Unknown model capability");
+    }
+
+    [Fact]
+    public async Task UpdateLlmConfig_UnsupportedModelInModels_ShouldReturn400()
+    {
+        var (controller, _) = CreateController();
+        var result = await controller.UpdateLlmConfig(new LlmConfigUpdateRequest
+        {
+            Provider = "AliyunBailian",
+            ApiKey = "sk-valid-123456",
+            Models = new Dictionary<string, string>
+            {
+                ["Large"] = "not-supported-model"
+            }
+        });
+
+        var badRequest = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+        var json = JsonSerializer.Serialize(badRequest.Value, JsonOptions);
+        json.Should().Contain("Unsupported model");
+    }
+
+    [Fact]
+    public async Task UpdateLlmConfig_WithApiKey_ShouldShowConfigured()
+    {
+        var (controller, _) = CreateController();
         var request = new LlmConfigUpdateRequest
         {
             Provider = "AliyunBailian",
             ApiKey = "sk-test1234567890abcdef"
         };
-        var result = controller.UpdateLlmConfig(request);
+        var result = await controller.UpdateLlmConfig(request);
 
         var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
         var json = JsonSerializer.Serialize(okResult.Value, JsonOptions);
@@ -91,30 +200,30 @@ public class SettingsControllerTests
     }
 
     [Fact]
-    public void UpdateLlmConfig_UnknownProvider_ShouldReturn400()
+    public async Task UpdateLlmConfig_UnknownProvider_ShouldReturn400()
     {
-        var controller = CreateController();
+        var (controller, _) = CreateController();
         var request = new LlmConfigUpdateRequest { Provider = "UnknownProvider" };
-        var result = controller.UpdateLlmConfig(request);
+        var result = await controller.UpdateLlmConfig(request);
 
         result.Should().BeOfType<BadRequestObjectResult>();
     }
 
     [Fact]
-    public void UpdateLlmConfig_EmptyProvider_ShouldReturn400()
+    public async Task UpdateLlmConfig_EmptyProvider_ShouldReturn400()
     {
-        var controller = CreateController();
+        var (controller, _) = CreateController();
         var request = new LlmConfigUpdateRequest { Provider = "" };
-        var result = controller.UpdateLlmConfig(request);
+        var result = await controller.UpdateLlmConfig(request);
 
         result.Should().BeOfType<BadRequestObjectResult>();
     }
 
     [Fact]
-    public void GetAvailableProviders_ShouldReturnKnownProviders()
+    public async Task GetAvailableProviders_ShouldReturnKnownProviders()
     {
-        var controller = CreateController();
-        var result = controller.GetAvailableProviders();
+        var (controller, _) = CreateController();
+        var result = await controller.GetAvailableProviders();
 
         var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
         var json = JsonSerializer.Serialize(okResult.Value, JsonOptions);
@@ -130,17 +239,21 @@ public class SettingsControllerTests
         var zhipu = providers[1];
         zhipu.GetProperty("name").GetString().Should().Be("Zhipu");
         zhipu.GetProperty("displayName").GetString().Should().Contain("智谱清言");
+        zhipu.GetProperty("availableModels").GetArrayLength().Should().BeGreaterThan(0);
     }
 
     [Fact]
-    public void UpdateLlmConfig_ShouldPersistAcrossGets()
+    public async Task UpdateLlmConfig_ShouldPersistAcrossGets()
     {
-        var accessor = new ModelProviderAccessor(WellKnownModelProviders.AliyunBailian);
-        var controller = new SettingsController(accessor);
+        var (controller, _) = CreateController();
 
-        controller.UpdateLlmConfig(new LlmConfigUpdateRequest { Provider = "Zhipu" });
+        await controller.UpdateLlmConfig(new LlmConfigUpdateRequest
+        {
+            Provider = "Zhipu",
+            ApiKey = "zhipu-persist-key-123456"
+        });
 
-        var getResult = controller.GetLlmConfig();
+        var getResult = await controller.GetLlmConfig();
         var okResult = getResult.Should().BeOfType<OkObjectResult>().Subject;
         var json = JsonSerializer.Serialize(okResult.Value, JsonOptions);
         var doc = JsonDocument.Parse(json);
@@ -159,15 +272,15 @@ public class SettingsControllerTests
     }
 
     [Fact]
-    public void UpdateLlmConfig_WithShortApiKey_ShouldNotExposeFullKey()
+    public async Task UpdateLlmConfig_WithShortApiKey_ShouldNotExposeFullKey()
     {
-        var controller = CreateController();
+        var (controller, _) = CreateController();
         var request = new LlmConfigUpdateRequest
         {
             Provider = "AliyunBailian",
             ApiKey = "ab"
         };
-        var result = controller.UpdateLlmConfig(request);
+        var result = await controller.UpdateLlmConfig(request);
 
         var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
         var json = JsonSerializer.Serialize(okResult.Value, JsonOptions);
@@ -179,10 +292,10 @@ public class SettingsControllerTests
     }
 
     [Fact]
-    public void UpdateLlmConfig_NullBody_ShouldReturn400()
+    public async Task UpdateLlmConfig_NullBody_ShouldReturn400()
     {
-        var controller = CreateController();
-        var result = controller.UpdateLlmConfig(null!);
+        var (controller, _) = CreateController();
+        var result = await controller.UpdateLlmConfig(null!);
 
         result.Should().BeOfType<BadRequestObjectResult>();
     }

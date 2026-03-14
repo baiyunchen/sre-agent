@@ -115,3 +115,65 @@ Screenshots location: `frontend/e2e-screenshots/`
 ## Release Recommendation
 
 **GO** — LLM Configuration settings page is ready for release. All E2E scenarios pass.
+
+---
+
+## Regression Addendum (US-L05)
+
+**Date:** 2026-03-14  
+**Scope:** 保存逻辑与用户路径回归（provider 切换 + API key 校验）
+
+### Additional Scenarios
+
+1. 切换到 `Zhipu` 且不输入 API key，点击保存
+   - **Expected:** 保存失败，展示错误提示，配置不应落库/生效
+   - **Actual:** PASS — 错误提示 `Switching provider requires a new API key`，刷新后 provider 仍为 `AliyunBailian`
+2. 切换到 `Zhipu` 并输入测试 key，点击保存
+   - **Expected:** 保存成功，刷新后 provider 为 `Zhipu`
+   - **Actual:** PASS — 成功提示，刷新后 provider 为 `Zhipu`，模型映射为 Zhipu 默认模型
+
+### Evidence
+
+- `frontend/e2e-screenshots/save-01-initial-state.png`
+- `frontend/e2e-screenshots/save-02-after-save-no-apikey.png`
+- `frontend/e2e-screenshots/save-03-after-refresh.png`
+- `frontend/e2e-screenshots/save-04-after-save-with-apikey.png`
+- `frontend/e2e-screenshots/save-05-final-zhipu-saved.png`
+
+### Updated Recommendation
+
+**GO** — US-L05 回归通过，关键失败分支和成功分支均符合用户预期。
+
+---
+
+## Regression Addendum (US-L06)
+
+**Date:** 2026-03-14  
+**Scope:** 持久化与分层重构回归（`llm_settings` + Service/Repository）
+
+### Additional Scenarios
+
+1. 持久化恢复验证（API）
+   - **Action:** 保存 `Zhipu` 配置后重启后端，再次 `GET /api/settings/llm`
+   - **Expected:** 重启后仍返回 `Zhipu` 配置
+   - **Actual:** PASS — 启动日志出现 `Loaded persisted llm settings from database for provider: Zhipu`，接口返回保持一致
+2. 前端关键链路验证（Browser）
+   - **Action:** Zhipu 无 key 保存 -> 失败；补 key 保存 -> 成功；切回 Aliyun -> 成功
+   - **Expected:** 失败/成功分支均符合预期，模型映射与 provider 一致
+   - **Actual:** PASS — 全部符合
+
+### Evidence
+
+- API 持久化验证：
+  - 重启前保存响应：`provider=Zhipu`
+  - 重启后读取响应：`provider=Zhipu`
+  - 启动日志：`Loaded persisted llm settings from database for provider: Zhipu`
+- Browser 截图：
+  - `frontend/e2e-screenshots/flow-01-zhipu-no-key-fail.png`
+  - `frontend/e2e-screenshots/flow-02-zhipu-with-key-success.png`
+  - `frontend/e2e-screenshots/flow-03-zhipu-models-mapping.png`
+  - `frontend/e2e-screenshots/flow-04-aliyun-with-key-success.png`
+
+### Updated Recommendation
+
+**GO** — US-L06 回归通过，设置持久化能力与分层治理符合验收标准。

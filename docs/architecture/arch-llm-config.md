@@ -8,6 +8,8 @@
 | US-L02 切换 Provider | `PUT /api/settings/llm` 更新 Provider + 运行时热切换 |
 | US-L03 配置 API Key | `PUT /api/settings/llm` 接受 apiKey 字段 |
 | US-L04 查看可用 Providers | `GET /api/settings/llm/providers` 返回已知 Provider 列表 |
+| US-L05 保存校验补强 | 切换 Provider 必须显式输入新 key；models 覆盖做 capability/model 合法性校验 |
+| US-L06 配置持久化 | 新增 `llm_settings` 表 + 启动恢复流程，重启后仍生效 |
 
 ## 模块拆分
 
@@ -20,13 +22,21 @@
 
 2. **ModelProviderAccessor** (Api 层实现)
    - 持有 `ModelProvider` 实例 + ReaderWriterLockSlim
-   - 初始化时从内存默认值创建（不引入 DB 持久化，保持简单）
+   - 初始化时从默认值创建，启动阶段可由 `LlmSettingsService` 从数据库恢复覆盖
    - `Update()` 创建新的 `ModelProvider` 替换旧实例
 
-3. **SettingsController** (Api 层新增)
-   - `GET /api/settings/llm` — 读取当前配置
-   - `PUT /api/settings/llm` — 更新配置（切换 Provider / 设置 API Key）
-   - `GET /api/settings/llm/providers` — 返回可用 Provider 列表
+3. **LlmSettingsRepository** (Repository 层新增)
+   - 对应表：`llm_settings`
+   - 负责单例配置（id=1）的读取与 upsert
+
+4. **LlmSettingsService** (Application 层新增)
+   - 聚合保存校验逻辑（provider 切换、apiKey 约束、models 覆盖合法性）
+   - 写入数据库并同步更新 `IModelProviderAccessor`
+   - 启动阶段执行持久化恢复
+
+5. **SettingsController** (Api 层)
+   - 仅负责 HTTP 入口、参数绑定、错误码映射
+   - 核心业务逻辑下沉至 `ILlmSettingsService`
 
 ### 前端
 
@@ -64,7 +74,10 @@
 }
 ```
 
-响应：同 GET 结构
+响应：同 GET 结构  
+校验规则：
+- 切换 provider 时必须提供 `apiKey`
+- `models` 覆盖中的 capability 必须是已知枚举，model 必须属于 provider 的 `availableModels`
 
 ### GET /api/settings/llm/providers
 
@@ -75,13 +88,15 @@
       "name": "AliyunBailian",
       "displayName": "Aliyun Bailian (通义千问)",
       "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-      "models": { "Large": "qwen3.5-plus", ... }
+      "models": { "Large": "qwen3.5-plus", ... },
+      "availableModels": ["qwen3.5-plus", "qwen-turbo"]
     },
     {
       "name": "Zhipu",
       "displayName": "Zhipu AI (智谱清言)",
       "baseUrl": "https://open.bigmodel.cn/api/paas/v4/",
-      "models": { "Large": "glm-4.6", ... }
+      "models": { "Large": "glm-4.6", ... },
+      "availableModels": ["glm-4.6", "glm-4.7", "codegeex-4", "..."]
     }
   ]
 }
@@ -90,11 +105,13 @@
 ## 关键数据流
 
 1. 前端 → `GET /api/settings/llm` → 展示当前配置
-2. 前端 → `PUT /api/settings/llm` → SettingsController → ModelProviderAccessor.Update() → 后续 Agent 使用新 Provider
-3. Agent → IModelProviderAccessor.Current → 获取最新 Provider
+2. 前端 → `PUT /api/settings/llm` → SettingsController → LlmSettingsService → LlmSettingsRepository.Upsert + ModelProviderAccessor.Update()
+3. 服务启动 → `LlmSettingsService.InitializeFromPersistenceAsync()` → 加载 `llm_settings` 覆盖默认配置
+4. Agent → `IModelProviderAccessor.Current` → 获取最新 Provider
 
 ## 设计决策
 
-- **不引入 DB 持久化**：LLM 配置重启后回到默认值（AliyunBailian），与当前行为一致。持久化在后续迭代加入。
-- **IModelProviderAccessor 替代直接注入 ModelProvider**：允许运行时切换，同时保持向下兼容。
+- **引入 DB 持久化**：新增 `llm_settings` 单例表，保证重启后配置可恢复。
+- **分层治理**：Controller 保持薄层，规则与状态变更集中在 Application Service。
+- **IModelProviderAccessor**：仍作为运行时热切换入口，Service 负责与持久化状态一致性。
 - **API Key 安全**：GET 不返回完整 Key，仅返回遮盖提示；PUT 接受新 Key。

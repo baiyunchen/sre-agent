@@ -14,6 +14,7 @@ public class AppDbContext : DbContext
     public DbSet<AuditLogEntity> AuditLogs => Set<AuditLogEntity>();
     public DbSet<DiagnosticDataEntity> DiagnosticData => Set<DiagnosticDataEntity>();
     public DbSet<ApprovalRuleEntity> ApprovalRules => Set<ApprovalRuleEntity>();
+    public DbSet<LlmSettingsEntity> LlmSettings => Set<LlmSettingsEntity>();
 
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
     {

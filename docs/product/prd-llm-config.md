@@ -53,3 +53,23 @@ SRE Agent 系统使用 LLM 进行告警分析与诊断。当前 LLM Provider 在
 - Token 限制调整 — 保持后端默认
 - Temperature / Max Tokens 前端配置 — 后端不支持此粒度，移除
 - 多 Provider 并行（同时用两个 Provider）— 后续迭代
+
+## 回归补充（US-L05 / US-L06）
+
+### US-L05: 保存校验与用户预期对齐
+
+作为系统管理员，我希望在切换 Provider 时必须显式输入新 API Key，以便避免“保存成功但实际不可用”的误导。
+
+**验收标准：**
+- Given 当前 Provider 为 Aliyun When 切换到 Zhipu 且未输入 `apiKey` Then 保存失败并提示必须输入新 key
+- Given 当前 Provider 未变化 When 仅更新 models 且不输入 `apiKey` Then 保留当前 key，不得被清空
+- Given `models` 覆盖包含未知 capability 或非法模型名 When 保存 Then 返回 400 并提示字段错误
+
+### US-L06: 配置持久化与分层治理
+
+作为系统管理员，我希望 LLM 配置能持久化到数据库并在服务重启后自动恢复，以便系统配置稳定可追踪。
+
+**验收标准：**
+- Given 管理员已保存 LLM 配置 When 服务重启 Then 读取到重启前配置
+- Given 代码评审 When 检查 Settings 模块 Then 核心业务逻辑位于 Service/Repository，不堆积在 Controller
+- Given 数据库迁移执行完成 When 检查 schema Then 存在 `llm_settings` 表
