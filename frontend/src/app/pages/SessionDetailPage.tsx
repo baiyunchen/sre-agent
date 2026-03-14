@@ -18,7 +18,9 @@ import {
   Circle,
   CircleDot,
   ClipboardList,
+  Loader2,
   Send,
+  Square,
   User,
   Bot,
   ShieldCheck,
@@ -79,11 +81,13 @@ export function SessionDetailPage() {
   const scrollRef = useRef<HTMLDivElement>(null)
   const queryClient = useQueryClient()
 
-  const sessionDetailQuery = useSessionDetail(sessionId)
-  const timelineQuery = useSessionTimeline(sessionId)
-  const diagnosisQuery = useSessionDiagnosis(sessionId)
-  const toolInvocationsQuery = useSessionToolInvocations(sessionId)
-  const todosQuery = useSessionTodos(sessionId)
+  const [isAgentRunning, setIsAgentRunning] = useState(false)
+
+  const sessionDetailQuery = useSessionDetail(sessionId, isAgentRunning)
+  const timelineQuery = useSessionTimeline(sessionId, isAgentRunning)
+  const diagnosisQuery = useSessionDiagnosis(sessionId, isAgentRunning)
+  const toolInvocationsQuery = useSessionToolInvocations(sessionId, isAgentRunning)
+  const todosQuery = useSessionTodos(sessionId, isAgentRunning)
   const sessionMessageMutation = useSessionMessage(sessionId)
   const interruptMutation = useMutation({
     mutationFn: () => (sessionId ? interruptSession(sessionId) : Promise.reject(new Error("No session"))),
@@ -113,6 +117,10 @@ export function SessionDetailPage() {
   const sessionStatus = sessionDetailQuery.data?.status ?? ""
   const showResumeUI = sessionStatus === "Interrupted" || sessionStatus === "WaitingApproval"
   const streamEnabled = sessionStatus === "Running"
+
+  useEffect(() => {
+    setIsAgentRunning(sessionStatus === "Running")
+  }, [sessionStatus])
   const { pendingApproval, clearPendingApproval } = useSessionStream(sessionId, streamEnabled)
 
   const approveToolMutation = useMutation({
@@ -165,7 +173,10 @@ export function SessionDetailPage() {
     if (!canSend) return
     await sessionMessageMutation.mutateAsync(message.trim())
     setMessage("")
+    setIsAgentRunning(true)
     queryClient.invalidateQueries({ queryKey: ["session-detail", sessionId] })
+    queryClient.invalidateQueries({ queryKey: ["session-timeline", sessionId] })
+    queryClient.invalidateQueries({ queryKey: ["session-tool-invocations", sessionId] })
   }
 
   const showInterruptCancel = sessionStatus === "Running"
@@ -341,6 +352,23 @@ export function SessionDetailPage() {
                           </Button>
                         </form>
                       </div>
+                    ) : sessionStatus === "Running" ? (
+                      <div className="flex items-center gap-2">
+                        <div className="flex flex-1 items-center gap-2 rounded-md border bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
+                          <Loader2 className="size-4 animate-spin" />
+                          <span>Agent 正在运行中...</span>
+                        </div>
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="destructive"
+                          className="shrink-0"
+                          disabled={interruptMutation.isPending}
+                          onClick={() => interruptMutation.mutate()}
+                        >
+                          <Square className="size-4" />
+                        </Button>
+                      </div>
                     ) : (
                       <form
                         className="flex items-center gap-2"
@@ -349,11 +377,15 @@ export function SessionDetailPage() {
                         <Input
                           value={message}
                           onChange={(e) => setMessage(e.target.value)}
-                          placeholder="Type a message to the agent..."
+                          placeholder="输入消息给 Agent..."
                           className="flex-1"
                         />
                         <Button type="submit" size="icon" disabled={!canSend} className="shrink-0">
-                          <Send className="size-4" />
+                          {sessionMessageMutation.isPending ? (
+                            <Loader2 className="size-4 animate-spin" />
+                          ) : (
+                            <Send className="size-4" />
+                          )}
                         </Button>
                       </form>
                     )}

@@ -23,4 +23,33 @@ public class AppDbContext : DbContext
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
     }
+
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        NormalizeDateTimesToUtc();
+        return base.SaveChanges(acceptAllChangesOnSuccess);
+    }
+
+    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    {
+        NormalizeDateTimesToUtc();
+        return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
+
+    private void NormalizeDateTimesToUtc()
+    {
+        foreach (var entry in ChangeTracker.Entries())
+        {
+            if (entry.State is not (EntityState.Added or EntityState.Modified))
+                continue;
+
+            foreach (var prop in entry.Properties)
+            {
+                if (prop.CurrentValue is DateTime dt && dt.Kind == DateTimeKind.Unspecified)
+                {
+                    prop.CurrentValue = DateTime.SpecifyKind(dt, DateTimeKind.Utc);
+                }
+            }
+        }
+    }
 }
