@@ -1,9 +1,9 @@
 ---
-name: large-change-delivery
-description: Drive large feature delivery with task slicing, user stories, contract-first RESTful APIs, mandatory testing/coverage gates, and end-to-end verification. Use when implementing cross-module features, large refactors, or any change requiring coordinated backend/frontend updates.
+name: change-delivery
+description: Drive feature delivery with task slicing, user stories, contract-first RESTful APIs, mandatory testing/coverage gates, and end-to-end verification. Use when implementing features, bug fixes, refactors, or any change requiring coordinated backend/frontend updates.
 ---
 
-# Large Change Delivery
+# Change Delivery
 
 ## Team orchestration
 
@@ -23,7 +23,7 @@ After each phase, `project-manager` must review artifacts and decide `GO/NO-GO`.
 
 ## Step 1: Create/refresh task board
 
-Before coding, update `docs/13-大型变更任务看板.md`:
+Before coding, update `docs/13-任务看板.md`:
 
 1. Split work into small tasks (target half-day granularity)
 2. Keep one main task in `in_progress`
@@ -85,7 +85,7 @@ Before marking task `done`:
 
 ## Step 5: Record evidence
 
-Update `docs/13-大型变更任务看板.md` with:
+Update `docs/13-任务看板.md` with:
 
 - Implementation summary
 - Test commands and results

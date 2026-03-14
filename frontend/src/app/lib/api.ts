@@ -9,6 +9,7 @@ import type {
   DashboardActivitiesResponse,
   DashboardActiveSessionsResponse,
   DashboardStatsResponse,
+  SessionDetailResponse,
   SessionListResponse,
   SessionDiagnosisResponse,
   SessionMessageRequest,
@@ -53,6 +54,21 @@ export async function fetchSessions(
   }
 
   return (await response.json()) as SessionListResponse
+}
+
+export async function fetchSessionDetail(
+  sessionId: string,
+): Promise<SessionDetailResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/sessions/${sessionId}`)
+  if (!response.ok) {
+    const fallbackMessage = `获取 Session 详情失败: ${response.status}`
+    const errorPayload = (await response.json().catch(() => null)) as
+      | { error?: string }
+      | null
+    throw new Error(errorPayload?.error ?? fallbackMessage)
+  }
+
+  return (await response.json()) as SessionDetailResponse
 }
 
 export async function postSessionMessage(

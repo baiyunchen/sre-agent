@@ -22,4 +22,4 @@ alwaysApply: true
 - `dotnet test --collect:"XPlat Code Coverage"`（backend）
 - 前端对应单测与集成测试命令
 
-提交前必须记录测试结论与覆盖率结果到 `docs/13-大型变更任务看板.md`。
+提交前必须记录测试结论与覆盖率结果到 `docs/13-任务看板.md`。

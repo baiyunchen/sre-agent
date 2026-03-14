@@ -17,5 +17,5 @@
 
 交接要求：
 
-- 在 `docs/13-大型变更任务看板.md` 填写报告链接与结论
+- 在 `docs/13-任务看板.md` 填写报告链接与结论
 - 由项目经理在 `docs/pm/stage-gate-<feature-key>.md` 评审并给出最终 `GO/NO-GO`

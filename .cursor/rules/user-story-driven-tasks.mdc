@@ -5,7 +5,7 @@ alwaysApply: true
 
 # User Story 驱动任务管理
 
-`docs/13-大型变更任务看板.md` 中的每个任务都应优先采用 User Story 形式：
+`docs/13-任务看板.md` 中的每个任务都应优先采用 User Story 形式：
 
 - 模板：`作为 <角色>，我希望 <能力>，以便 <业务价值>`
 - 每条 Story 必须包含可验证验收标准（Acceptance Criteria）

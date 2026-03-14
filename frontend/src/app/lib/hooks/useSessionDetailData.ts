@@ -1,10 +1,20 @@
 import { useQuery } from "@tanstack/react-query"
 import {
+  fetchSessionDetail,
   fetchSessionDiagnosis,
   fetchSessionTimeline,
   fetchSessionTodos,
   fetchSessionToolInvocations,
 } from "@/app/lib/api"
+
+export function useSessionDetail(sessionId: string | undefined) {
+  return useQuery({
+    queryKey: ["session-detail", sessionId],
+    queryFn: () => fetchSessionDetail(sessionId as string),
+    enabled: Boolean(sessionId),
+    refetchInterval: 30_000,
+  })
+}
 
 export function useSessionTimeline(sessionId: string | undefined) {
   return useQuery({

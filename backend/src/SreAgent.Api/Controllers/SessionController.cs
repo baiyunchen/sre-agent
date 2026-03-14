@@ -289,7 +289,10 @@ public class SessionController : ControllerBase
         {
             ["current_agent_id"] = _agent.Id,
             ["current_step"] = result.IterationCount,
-            ["status"] = result.IsSuccess ? "Completed" : "Failed"
+            ["status"] = result.IsSuccess ? "Completed" : "Failed",
+            ["prompt_tokens"] = result.TokenUsage.PromptTokens,
+            ["completion_tokens"] = result.TokenUsage.CompletionTokens,
+            ["total_tokens"] = result.TokenUsage.TotalTokens
         };
 
         if (!string.IsNullOrWhiteSpace(result.Output))
@@ -463,7 +466,13 @@ public class SessionController : ControllerBase
             CreatedAt = session.CreatedAt,
             StartedAt = session.StartedAt,
             CompletedAt = session.CompletedAt,
-            UpdatedAt = session.UpdatedAt
+            UpdatedAt = session.UpdatedAt,
+            TokenUsage = new TokenUsageInfo
+            {
+                PromptTokens = session.PromptTokens,
+                CompletionTokens = session.CompletionTokens,
+                TotalTokens = session.TotalTokens
+            }
         };
     }
 
@@ -765,6 +774,7 @@ public class SessionDetailResponse
     public DateTime? StartedAt { get; set; }
     public DateTime? CompletedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
+    public TokenUsageInfo TokenUsage { get; set; } = new();
 }
 
 public class SessionTimelineResponse

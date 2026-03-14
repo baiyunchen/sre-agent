@@ -24,6 +24,10 @@ public class SessionEntity
     public string? DiagnosisSummary { get; set; }
     public double? Confidence { get; set; }
 
+    public int PromptTokens { get; set; }
+    public int CompletionTokens { get; set; }
+    public int TotalTokens { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? StartedAt { get; set; }
     public DateTime? CompletedAt { get; set; }

@@ -22,4 +22,4 @@ You own technical design and decomposition.
 - Task breakdown linked to user stories
 - API contract updates before development starts
 - Technical risks, trade-offs, and mitigation plan
-- Document link and completion status in `docs/13-大型变更任务看板.md`
+- Document link and completion status in `docs/13-任务看板.md`

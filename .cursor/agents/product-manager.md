@@ -22,4 +22,4 @@ You are responsible for requirement clarity and user value definition.
 - PRD or feature requirement doc in `docs/product/prd-<feature-key>.md`
 - Story list with priority and acceptance criteria
 - Requirement clarifications and open questions
-- Document link and completion status in `docs/13-大型变更任务看板.md`
+- Document link and completion status in `docs/13-任务看板.md`

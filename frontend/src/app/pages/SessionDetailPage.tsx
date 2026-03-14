@@ -43,7 +43,9 @@ import {
 } from "@/components/ui/collapsible"
 import { Progress } from "@/components/ui/progress"
 import { Input } from "@/components/ui/input"
+import { useQueryClient } from "@tanstack/react-query"
 import {
+  useSessionDetail,
   useSessionDiagnosis,
   useSessionTimeline,
   useSessionTodos,
@@ -51,7 +53,10 @@ import {
 } from "@/app/lib/hooks/useSessionDetailData"
 import { useSessionMessage } from "@/app/lib/hooks/useSessionMessage"
 import { MarkdownContent } from "@/app/components/MarkdownContent"
-import type { TimelineEvent as TimelineEventType, SessionTodoItem } from "@/app/lib/types"
+import type {
+  TimelineEvent as TimelineEventType,
+  SessionTodoItem,
+} from "@/app/lib/types"
 
 function formatDate(value: string | null | undefined): string {
   if (!value) return "-"
@@ -65,12 +70,16 @@ export function SessionDetailPage() {
   const [message, setMessage] = useState("")
   const [expandedEvents, setExpandedEvents] = useState<Set<string>>(new Set())
   const scrollRef = useRef<HTMLDivElement>(null)
+  const queryClient = useQueryClient()
 
+  const sessionDetailQuery = useSessionDetail(sessionId)
   const timelineQuery = useSessionTimeline(sessionId)
   const diagnosisQuery = useSessionDiagnosis(sessionId)
   const toolInvocationsQuery = useSessionToolInvocations(sessionId)
   const todosQuery = useSessionTodos(sessionId)
   const sessionMessageMutation = useSessionMessage(sessionId)
+
+  const tokenUsage = sessionDetailQuery.data?.tokenUsage
 
   const events = timelineQuery.data?.events ?? []
 
@@ -88,6 +97,7 @@ export function SessionDetailPage() {
     if (!canSend) return
     await sessionMessageMutation.mutateAsync(message.trim())
     setMessage("")
+    queryClient.invalidateQueries({ queryKey: ["session-detail", sessionId] })
   }
 
   const toggleEvent = (eventId: string) => {
@@ -177,6 +187,12 @@ export function SessionDetailPage() {
                         <Send className="size-4" />
                       </Button>
                     </form>
+                    {tokenUsage && tokenUsage.totalTokens > 0 && (
+                      <p className="mt-1.5 text-[11px] text-muted-foreground">
+                        Token: {tokenUsage.totalTokens.toLocaleString()}
+                        {" "}({tokenUsage.promptTokens.toLocaleString()} prompt / {tokenUsage.completionTokens.toLocaleString()} completion)
+                      </p>
+                    )}
                   </div>
                 </CardContent>
               </Card>

@@ -126,7 +126,10 @@ public class SreController : ControllerBase
             ["status"] = sessionStatus,
             ["completed_at"] = completedAt,
             ["current_step"] = result.IterationCount,
-            ["diagnosis_summary"] = result.Output ?? string.Empty
+            ["diagnosis_summary"] = result.Output ?? string.Empty,
+            ["prompt_tokens"] = result.TokenUsage.PromptTokens,
+            ["completion_tokens"] = result.TokenUsage.CompletionTokens,
+            ["total_tokens"] = result.TokenUsage.TotalTokens
         };
 
         await _contextStore.SaveAsync(

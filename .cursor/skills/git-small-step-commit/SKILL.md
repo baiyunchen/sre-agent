@@ -15,7 +15,7 @@ Use after each minimal verifiable change (a small, testable sub-task) during imp
 2. Run minimal verification tests for this change
 3. Stage only relevant files
 4. Commit with story-aware message
-5. Update `docs/13-大型变更任务看板.md` with commit hash and mapping
+5. Update `docs/13-任务看板.md` with commit hash and mapping
 
 ## Commit message format
 

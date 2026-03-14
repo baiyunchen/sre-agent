@@ -28,4 +28,4 @@ You are the final quality gate owner before task completion.
 - Backend e2e evidence
 - Frontend e2e evidence
 - Release recommendation and residual risks
-- Document link and completion status in `docs/13-大型变更任务看板.md`
+- Document link and completion status in `docs/13-任务看板.md`

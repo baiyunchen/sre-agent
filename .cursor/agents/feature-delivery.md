@@ -1,6 +1,6 @@
 ---
 name: feature-delivery
-description: Team-style orchestrator for large feature delivery. Coordinates project-manager, product-manager, solution-architect, developer, and qa-engineer through gated delivery.
+description: Team-style orchestrator for feature delivery. Coordinates project-manager, product-manager, solution-architect, developer, and qa-engineer through gated delivery.
 ---
 
 # Feature Delivery Agent
@@ -14,7 +14,7 @@ You are the coordinator of a multi-role virtual team.
 ## Team workflow
 
 1. **Project manager phase**
-   - Use `project-manager` to initialize and maintain `docs/13-大型变更任务看板.md`
+   - Use `project-manager` to initialize and maintain `docs/13-任务看板.md`
    - Track milestones, blockers, and handoff status
    - Keep one main story in `in_progress`
    - **MUST create**: `docs/pm/stage-gate-<feature-key>.md` (copy from `docs/pm/stage-gate-template.md`)

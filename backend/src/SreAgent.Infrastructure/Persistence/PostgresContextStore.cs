@@ -198,6 +198,13 @@ public class PostgresContextStore : IContextStore
 
         if (metadata.TryGetValue("confidence", out var conf) && conf is double confVal)
             session.Confidence = confVal;
+
+        if (metadata.TryGetValue("prompt_tokens", out var pt) && pt is int ptVal)
+            session.PromptTokens += ptVal;
+        if (metadata.TryGetValue("completion_tokens", out var ct3) && ct3 is int ctVal)
+            session.CompletionTokens += ctVal;
+        if (metadata.TryGetValue("total_tokens", out var tt) && tt is int ttVal)
+            session.TotalTokens += ttVal;
     }
 
     private static bool TryReadString(JsonElement jsonElement, string propertyName, out string? value)

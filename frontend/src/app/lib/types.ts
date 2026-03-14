@@ -48,7 +48,7 @@ export interface SessionMessageRequest {
   userId?: string
 }
 
-export interface SessionMessageTokenUsage {
+export interface TokenUsageInfo {
   promptTokens: number
   completionTokens: number
   totalTokens: number
@@ -59,7 +59,28 @@ export interface SessionMessageResponse {
   output: string | null
   isSuccess: boolean
   error: string | null
-  tokenUsage: SessionMessageTokenUsage
+  tokenUsage: TokenUsageInfo
+}
+
+export interface SessionDetailResponse {
+  id: string
+  status: string
+  alertId: string | null
+  alertName: string | null
+  source: string | null
+  severity: string | null
+  serviceName: string | null
+  currentAgentId: string | null
+  currentStep: number
+  agentSteps: number
+  diagnosisSummary: string | null
+  confidence: number | null
+  duration: number | null
+  createdAt: string
+  startedAt: string | null
+  completedAt: string | null
+  updatedAt: string
+  tokenUsage: TokenUsageInfo
 }
 
 export interface TimelineEvent {
