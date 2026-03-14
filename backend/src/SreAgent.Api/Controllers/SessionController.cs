@@ -22,7 +22,7 @@ public class SessionController : ControllerBase
         new(["asc", "desc"], StringComparer.OrdinalIgnoreCase);
 
     private static readonly HashSet<string> MessageAllowedSessionStatuses =
-        new(["Running"], StringComparer.OrdinalIgnoreCase);
+        new(["Running", "Completed", "Failed", "Interrupted"], StringComparer.OrdinalIgnoreCase);
 
     private readonly ISessionRepository _sessionRepository;
     private readonly IMessageRepository _messageRepository;
@@ -300,6 +300,12 @@ public class SessionController : ControllerBase
         var userInput = request.Message.Trim();
         var context = DefaultContextManager.FromSnapshot(snapshot, _tokenEstimator, _contextOptions);
         context.AddUserMessage(userInput);
+
+        if (session.Status != "Running")
+        {
+            session.Status = "Running";
+            await _sessionRepository.UpdateAsync(session, ct);
+        }
 
         await _contextStore.SaveAsync(context.ExportSnapshot(sessionId), ct);
 

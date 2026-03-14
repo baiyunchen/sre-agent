@@ -357,6 +357,11 @@ export function SessionDetailPage() {
                         </Button>
                       </form>
                     )}
+                    {sessionMessageMutation.error instanceof Error && (
+                      <p className="mt-1.5 text-xs text-destructive">
+                        {sessionMessageMutation.error.message}
+                      </p>
+                    )}
                     {tokenUsage && tokenUsage.totalTokens > 0 && (
                       <p className="mt-1.5 text-[11px] text-muted-foreground">
                         Token: {tokenUsage.totalTokens.toLocaleString()}
