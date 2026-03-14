@@ -619,20 +619,10 @@ public class SessionControllerTests
                 It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
-        agent.SetupGet(a => a.Id).Returns("sre-coordinator");
-        agent
-            .Setup(a => a.ExecuteAsync(
-                It.IsAny<IContextManager>(),
-                It.IsAny<IReadOnlyDictionary<string, object>>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync((IContextManager context, IReadOnlyDictionary<string, object>? _, CancellationToken _) =>
-                AgentResult.Success("收到，继续分析中", context, new TokenUsage(7, 11), iterationCount: 2));
-
         var controller = CreateController(
             sessionRepository.Object,
             contextStore: contextStore.Object,
             auditService: auditService.Object,
-            agent: agent.Object,
             tokenEstimator: new SimpleTokenEstimator());
 
         var result = await controller.PostSessionMessage(
@@ -640,18 +630,16 @@ public class SessionControllerTests
             new SessionMessageRequest { Message = "继续分析这个会话", UserId = "user-1" },
             CancellationToken.None);
 
-        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
-        var payload = okResult.Value.Should().BeOfType<SessionMessageResponse>().Subject;
+        var acceptedResult = result.Should().BeOfType<AcceptedResult>().Subject;
+        var payload = acceptedResult.Value.Should().BeOfType<SessionMessageResponse>().Subject;
 
         payload.SessionId.Should().Be(sessionId);
         payload.IsSuccess.Should().BeTrue();
-        payload.Output.Should().Contain("继续分析");
-        payload.TokenUsage.TotalTokens.Should().Be(18);
+        payload.Output.Should().BeNull();
+        payload.TokenUsage.TotalTokens.Should().Be(0);
 
         contextStore.Verify(s => s.SaveAsync(
-            It.Is<ContextSnapshot>(snapshot =>
-                snapshot.SessionId == sessionId
-                && snapshot.Metadata.ContainsKey("current_step")),
+            It.Is<ContextSnapshot>(snapshot => snapshot.SessionId == sessionId),
             It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -664,9 +652,9 @@ public class SessionControllerTests
         IContextStore? contextStore = null,
         ITokenEstimator? tokenEstimator = null,
         ContextManagerOptions? contextOptions = null,
-        IExecutionTracker? executionTracker = null,
         IAuditService? auditService = null,
-        IAgent? agent = null)
+        IAgent? agent = null,
+        IBackgroundSessionExecutor? backgroundExecutor = null)
     {
         return new SessionController(
             sessionRepository,
@@ -677,13 +665,13 @@ public class SessionControllerTests
             contextStore ?? Mock.Of<IContextStore>(),
             tokenEstimator ?? new SimpleTokenEstimator(),
             contextOptions ?? new ContextManagerOptions(),
-            executionTracker ?? Mock.Of<IExecutionTracker>(),
             Mock.Of<ICheckpointService>(),
             Mock.Of<IInterventionService>(),
             Mock.Of<ISessionRecoveryService>(),
             auditService ?? Mock.Of<IAuditService>(),
             Mock.Of<ISessionStreamPublisher>(),
             agent ?? Mock.Of<IAgent>(),
+            backgroundExecutor ?? Mock.Of<IBackgroundSessionExecutor>(),
             Mock.Of<ILogger<SessionController>>());
     }
 }

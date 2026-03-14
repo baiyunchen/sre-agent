@@ -1,6 +1,4 @@
-using SreAgent.Framework.Abstractions;
 using SreAgent.Framework.Contexts;
-using SreAgent.Framework.Results;
 using SreAgent.Repository.Repositories;
 
 namespace SreAgent.Application.Services;
@@ -8,8 +6,13 @@ namespace SreAgent.Application.Services;
 public interface ISessionRecoveryService
 {
     Task<bool> CanResumeAsync(Guid sessionId, CancellationToken ct = default);
-    Task<AgentResult> ResumeSessionAsync(
-        Guid sessionId, IAgent agent, string? continueInput = null, CancellationToken ct = default);
+
+    /// <summary>
+    /// Prepares session for resume: restores from checkpoint, adds optional input, updates status to Running.
+    /// Returns the prepared context for the caller to start background execution.
+    /// </summary>
+    Task<IContextManager> PrepareResumeAsync(
+        Guid sessionId, string? continueInput = null, CancellationToken ct = default);
 }
 
 public class SessionRecoveryService : ISessionRecoveryService
@@ -40,8 +43,8 @@ public class SessionRecoveryService : ISessionRecoveryService
         return session?.Status is "Interrupted" or "WaitingApproval";
     }
 
-    public async Task<AgentResult> ResumeSessionAsync(
-        Guid sessionId, IAgent agent, string? continueInput = null, CancellationToken ct = default)
+    public async Task<IContextManager> PrepareResumeAsync(
+        Guid sessionId, string? continueInput = null, CancellationToken ct = default)
     {
         var session = await _sessionRepository.GetAsync(sessionId, ct)
             ?? throw new InvalidOperationException($"Session {sessionId} not found");
@@ -69,6 +72,6 @@ public class SessionRecoveryService : ISessionRecoveryService
             new { checkpointId = checkpoint.Id, continueInput },
             "system", null, ct);
 
-        return await agent.ExecuteAsync(context, cancellationToken: ct);
+        return context;
     }
 }

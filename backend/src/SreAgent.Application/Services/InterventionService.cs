@@ -22,6 +22,7 @@ public class InterventionService : IInterventionService
     private readonly IContextStore _contextStore;
     private readonly ITokenEstimator _tokenEstimator;
     private readonly IAuditService _auditService;
+    private readonly ISessionExecutionRegistry _executionRegistry;
 
     public InterventionService(
         ISessionRepository sessionRepository,
@@ -29,7 +30,8 @@ public class InterventionService : IInterventionService
         ICheckpointService checkpointService,
         IContextStore contextStore,
         ITokenEstimator tokenEstimator,
-        IAuditService auditService)
+        IAuditService auditService,
+        ISessionExecutionRegistry executionRegistry)
     {
         _sessionRepository = sessionRepository;
         _interventionRepository = interventionRepository;
@@ -37,6 +39,7 @@ public class InterventionService : IInterventionService
         _contextStore = contextStore;
         _tokenEstimator = tokenEstimator;
         _auditService = auditService;
+        _executionRegistry = executionRegistry;
     }
 
     public async Task InterruptSessionAsync(Guid sessionId, string reason, string userId, CancellationToken ct = default)
@@ -46,6 +49,8 @@ public class InterventionService : IInterventionService
 
         if (session.Status != "Running")
             throw new InvalidOperationException($"Can only interrupt running sessions, current status: {session.Status}");
+
+        _executionRegistry.Cancel(sessionId);
 
         session.Status = "Interrupted";
         await _sessionRepository.UpdateAsync(session, ct);
@@ -71,6 +76,8 @@ public class InterventionService : IInterventionService
     {
         var session = await _sessionRepository.GetAsync(sessionId, ct)
             ?? throw new InvalidOperationException($"Session {sessionId} not found");
+
+        _executionRegistry.Cancel(sessionId);
 
         session.Status = "Cancelled";
         await _sessionRepository.UpdateAsync(session, ct);

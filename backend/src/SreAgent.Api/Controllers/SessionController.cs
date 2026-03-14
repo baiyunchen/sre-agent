@@ -32,13 +32,13 @@ public class SessionController : ControllerBase
     private readonly IContextStore _contextStore;
     private readonly ITokenEstimator _tokenEstimator;
     private readonly ContextManagerOptions _contextOptions;
-    private readonly IExecutionTracker _executionTracker;
     private readonly ICheckpointService _checkpointService;
     private readonly IInterventionService _interventionService;
     private readonly ISessionRecoveryService _recoveryService;
     private readonly IAuditService _auditService;
     private readonly ISessionStreamPublisher _streamPublisher;
     private readonly IAgent _agent;
+    private readonly IBackgroundSessionExecutor _backgroundExecutor;
     private readonly ILogger<SessionController> _logger;
 
     public SessionController(
@@ -50,13 +50,13 @@ public class SessionController : ControllerBase
         IContextStore contextStore,
         ITokenEstimator tokenEstimator,
         ContextManagerOptions contextOptions,
-        IExecutionTracker executionTracker,
         ICheckpointService checkpointService,
         IInterventionService interventionService,
         ISessionRecoveryService recoveryService,
         IAuditService auditService,
         ISessionStreamPublisher streamPublisher,
         IAgent agent,
+        IBackgroundSessionExecutor backgroundExecutor,
         ILogger<SessionController> logger)
     {
         _sessionRepository = sessionRepository;
@@ -67,13 +67,13 @@ public class SessionController : ControllerBase
         _contextStore = contextStore;
         _tokenEstimator = tokenEstimator;
         _contextOptions = contextOptions;
-        _executionTracker = executionTracker;
         _checkpointService = checkpointService;
         _interventionService = interventionService;
         _recoveryService = recoveryService;
         _auditService = auditService;
         _streamPublisher = streamPublisher;
         _agent = agent;
+        _backgroundExecutor = backgroundExecutor;
         _logger = logger;
     }
 
@@ -295,10 +295,7 @@ public class SessionController : ControllerBase
         var context = DefaultContextManager.FromSnapshot(snapshot, _tokenEstimator, _contextOptions);
         context.AddUserMessage(userInput);
 
-        var variables = new Dictionary<string, object>
-        {
-            [IExecutionTracker.VariableKey] = _executionTracker
-        };
+        await _contextStore.SaveAsync(context.ExportSnapshot(sessionId), ct);
 
         await _auditService.LogAsync(
             sessionId,
@@ -309,64 +306,33 @@ public class SessionController : ControllerBase
             request.UserId,
             ct);
 
-        AgentResult result;
-        try
+        _backgroundExecutor.StartExecution(sessionId, context, result =>
         {
-            result = await _agent.ExecuteAsync(context, variables, ct);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to execute follow-up message for session {SessionId}", sessionId);
-            await _auditService.LogAsync(
-                sessionId,
-                "SessionMessageFailed",
-                ex.Message,
-                new { message = userInput },
-                "system",
-                null,
-                ct);
-            throw;
-        }
+            var metadata = new Dictionary<string, object>
+            {
+                ["current_agent_id"] = _agent.Id,
+                ["current_step"] = result.IterationCount,
+                ["status"] = result.IsSuccess ? "Completed" : "Failed",
+                ["prompt_tokens"] = result.TokenUsage.PromptTokens,
+                ["completion_tokens"] = result.TokenUsage.CompletionTokens,
+                ["total_tokens"] = result.TokenUsage.TotalTokens
+            };
+            if (!string.IsNullOrWhiteSpace(result.Output))
+                metadata["diagnosis_summary"] = result.Output;
+            return metadata;
+        });
 
-        var metadata = new Dictionary<string, object>
-        {
-            ["current_agent_id"] = _agent.Id,
-            ["current_step"] = result.IterationCount,
-            ["status"] = result.IsSuccess ? "Completed" : "Failed",
-            ["prompt_tokens"] = result.TokenUsage.PromptTokens,
-            ["completion_tokens"] = result.TokenUsage.CompletionTokens,
-            ["total_tokens"] = result.TokenUsage.TotalTokens
-        };
-
-        if (!string.IsNullOrWhiteSpace(result.Output))
-            metadata["diagnosis_summary"] = result.Output;
-
-        await _contextStore.SaveAsync(result.Context.ExportSnapshot(sessionId, metadata), ct);
-
-        await _auditService.LogAsync(
-            sessionId,
-            result.IsSuccess ? "SessionMessageProcessed" : "SessionMessageFailed",
-            result.IsSuccess ? "Follow-up message processed" : (result.Error?.Message ?? "Follow-up message failed"),
-            new { message = userInput, result.IsSuccess },
-            "system",
-            null,
-            ct);
-
-        return Ok(new SessionMessageResponse
+        return Accepted($"/api/sessions/{sessionId}", new SessionMessageResponse
         {
             SessionId = sessionId,
-            Output = result.Output,
-            IsSuccess = result.IsSuccess,
-            Error = result.Error?.Message,
-            TokenUsage = new TokenUsageInfo
-            {
-                PromptTokens = result.TokenUsage.PromptTokens,
-                CompletionTokens = result.TokenUsage.CompletionTokens,
-                TotalTokens = result.TokenUsage.TotalTokens
-            }
+            Output = null,
+            IsSuccess = true,
+            Error = null,
+            TokenUsage = new TokenUsageInfo { PromptTokens = 0, CompletionTokens = 0, TotalTokens = 0 }
         });
     }
 
+    [HttpPost("/api/sessions/{sessionId:guid}/interrupt")]
     [HttpPost("{sessionId:guid}/interrupt")]
     public async Task<IActionResult> InterruptSession(
         Guid sessionId, [FromBody] InterventionRequest request, CancellationToken ct)
@@ -383,6 +349,7 @@ public class SessionController : ControllerBase
         }
     }
 
+    [HttpPost("/api/sessions/{sessionId:guid}/cancel")]
     [HttpPost("{sessionId:guid}/cancel")]
     public async Task<IActionResult> CancelSession(
         Guid sessionId, [FromBody] InterventionRequest request, CancellationToken ct)
@@ -399,6 +366,7 @@ public class SessionController : ControllerBase
         }
     }
 
+    [HttpPost("/api/sessions/{sessionId:guid}/resume")]
     [HttpPost("{sessionId:guid}/resume")]
     public async Task<IActionResult> ResumeSession(
         Guid sessionId, [FromBody] ResumeRequest? request, CancellationToken ct)
@@ -408,15 +376,17 @@ public class SessionController : ControllerBase
             if (!await _recoveryService.CanResumeAsync(sessionId, ct))
                 return BadRequest(new { error = "Session cannot be resumed" });
 
-            var result = await _recoveryService.ResumeSessionAsync(
-                sessionId, _agent, request?.ContinueInput, ct);
+            var context = await _recoveryService.PrepareResumeAsync(
+                sessionId, request?.ContinueInput, ct);
 
-            return Ok(new
+            _backgroundExecutor.StartExecution(sessionId, context);
+
+            return Accepted($"/api/sessions/{sessionId}", new
             {
                 sessionId,
-                result.Output,
-                result.IsSuccess,
-                Error = result.Error?.Message
+                Output = (string?)null,
+                IsSuccess = true,
+                Error = (string?)null
             });
         }
         catch (InvalidOperationException ex)

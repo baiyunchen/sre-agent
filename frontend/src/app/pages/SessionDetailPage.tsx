@@ -15,9 +15,6 @@ import {
   Brain,
   Wrench,
   FileText,
-  ThumbsUp,
-  ThumbsDown,
-  MinusCircle,
   Circle,
   CircleDot,
   ClipboardList,
@@ -43,7 +40,7 @@ import {
 } from "@/components/ui/collapsible"
 import { Progress } from "@/components/ui/progress"
 import { Input } from "@/components/ui/input"
-import { useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
 import {
   useSessionDetail,
   useSessionDiagnosis,
@@ -53,6 +50,7 @@ import {
 } from "@/app/lib/hooks/useSessionDetailData"
 import { useSessionMessage } from "@/app/lib/hooks/useSessionMessage"
 import { useSessionStream } from "@/app/lib/hooks/useSessionStream"
+import { interruptSession, cancelSession, resumeSession } from "@/app/lib/api"
 import { MarkdownContent } from "@/app/components/MarkdownContent"
 import type {
   TimelineEvent as TimelineEventType,
@@ -79,8 +77,33 @@ export function SessionDetailPage() {
   const toolInvocationsQuery = useSessionToolInvocations(sessionId)
   const todosQuery = useSessionTodos(sessionId)
   const sessionMessageMutation = useSessionMessage(sessionId)
+  const interruptMutation = useMutation({
+    mutationFn: () => (sessionId ? interruptSession(sessionId) : Promise.reject(new Error("No session"))),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["session-detail", sessionId] })
+      queryClient.invalidateQueries({ queryKey: ["session-timeline", sessionId] })
+    },
+  })
+  const cancelMutation = useMutation({
+    mutationFn: () => (sessionId ? cancelSession(sessionId) : Promise.reject(new Error("No session"))),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["session-detail", sessionId] })
+      queryClient.invalidateQueries({ queryKey: ["session-timeline", sessionId] })
+    },
+  })
+  const resumeMutation = useMutation({
+    mutationFn: (continueInput?: string) =>
+      sessionId ? resumeSession(sessionId, { continueInput }) : Promise.reject(new Error("No session")),
+    onSuccess: () => {
+      setMessage("")
+      queryClient.invalidateQueries({ queryKey: ["session-detail", sessionId] })
+      queryClient.invalidateQueries({ queryKey: ["session-timeline", sessionId] })
+      queryClient.invalidateQueries({ queryKey: ["session-tool-invocations", sessionId] })
+    },
+  })
 
   const sessionStatus = sessionDetailQuery.data?.status ?? ""
+  const showResumeUI = sessionStatus === "Interrupted" || sessionStatus === "WaitingApproval"
   const streamEnabled = sessionStatus === "Running"
   useSessionStream(sessionId, streamEnabled)
 
@@ -96,6 +119,7 @@ export function SessionDetailPage() {
 
   const canSend =
     Boolean(sessionId) && message.trim().length > 0 && !sessionMessageMutation.isPending
+  const canResume = Boolean(sessionId) && !resumeMutation.isPending
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -104,6 +128,8 @@ export function SessionDetailPage() {
     setMessage("")
     queryClient.invalidateQueries({ queryKey: ["session-detail", sessionId] })
   }
+
+  const showInterruptCancel = sessionStatus === "Running"
 
   const toggleEvent = (eventId: string) => {
     setExpandedEvents((prev) => {
@@ -138,6 +164,30 @@ export function SessionDetailPage() {
                   </Button>
                 </div>
               </div>
+              {showInterruptCancel && (
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => interruptMutation.mutate()}
+                    disabled={interruptMutation.isPending}
+                    className="text-amber-600 border-amber-300 hover:bg-amber-50"
+                  >
+                    <StopCircle className="mr-1.5 size-4" />
+                    中断
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => cancelMutation.mutate()}
+                    disabled={cancelMutation.isPending}
+                    className="text-red-600 border-red-300 hover:bg-red-50"
+                  >
+                    <XCircle className="mr-1.5 size-4" />
+                    取消
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -178,20 +228,49 @@ export function SessionDetailPage() {
 
                   {/* Input Area */}
                   <div className="shrink-0 border-t pt-3">
-                    <form
-                      className="flex items-center gap-2"
-                      onSubmit={handleSubmit}
-                    >
-                      <Input
-                        value={message}
-                        onChange={(e) => setMessage(e.target.value)}
-                        placeholder="Type a message to the agent..."
-                        className="flex-1"
-                      />
-                      <Button type="submit" size="icon" disabled={!canSend} className="shrink-0">
-                        <Send className="size-4" />
-                      </Button>
-                    </form>
+                    {showResumeUI ? (
+                      <div className="flex flex-col gap-2">
+                        <p className="text-sm text-muted-foreground">
+                          Session 已中断，您可以输入补充信息后恢复
+                        </p>
+                        <form
+                          className="flex items-center gap-2"
+                          onSubmit={(e) => {
+                            e.preventDefault()
+                            if (canResume) resumeMutation.mutate(message.trim() || undefined)
+                          }}
+                        >
+                          <Input
+                            value={message}
+                            onChange={(e) => setMessage(e.target.value)}
+                            placeholder="输入补充信息（可选）后点击恢复..."
+                            className="flex-1"
+                          />
+                          <Button
+                            type="submit"
+                            disabled={!canResume}
+                            className="shrink-0"
+                          >
+                            恢复
+                          </Button>
+                        </form>
+                      </div>
+                    ) : (
+                      <form
+                        className="flex items-center gap-2"
+                        onSubmit={handleSubmit}
+                      >
+                        <Input
+                          value={message}
+                          onChange={(e) => setMessage(e.target.value)}
+                          placeholder="Type a message to the agent..."
+                          className="flex-1"
+                        />
+                        <Button type="submit" size="icon" disabled={!canSend} className="shrink-0">
+                          <Send className="size-4" />
+                        </Button>
+                      </form>
+                    )}
                     {tokenUsage && tokenUsage.totalTokens > 0 && (
                       <p className="mt-1.5 text-[11px] text-muted-foreground">
                         Token: {tokenUsage.totalTokens.toLocaleString()}

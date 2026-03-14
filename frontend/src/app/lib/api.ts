@@ -319,3 +319,62 @@ export async function deleteApprovalRule(id: string): Promise<void> {
     throw new Error(errorPayload?.error ?? fallbackMessage)
   }
 }
+
+export async function interruptSession(
+  sessionId: string,
+  payload: { reason?: string; userId?: string } = {},
+): Promise<{ message: string }> {
+  const response = await fetch(`${API_BASE_URL}/api/sessions/${sessionId}/interrupt`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reason: payload.reason ?? "User requested", userId: payload.userId }),
+  })
+
+  if (!response.ok) {
+    const errorPayload = (await response.json().catch(() => null)) as { error?: string } | null
+    throw new Error(errorPayload?.error ?? `Interrupt failed: ${response.status}`)
+  }
+
+  return (await response.json()) as { message: string }
+}
+
+export async function cancelSession(
+  sessionId: string,
+  payload: { reason?: string; userId?: string } = {},
+): Promise<{ message: string }> {
+  const response = await fetch(`${API_BASE_URL}/api/sessions/${sessionId}/cancel`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reason: payload.reason ?? "User requested", userId: payload.userId }),
+  })
+
+  if (!response.ok) {
+    const errorPayload = (await response.json().catch(() => null)) as { error?: string } | null
+    throw new Error(errorPayload?.error ?? `Cancel failed: ${response.status}`)
+  }
+
+  return (await response.json()) as { message: string }
+}
+
+export async function resumeSession(
+  sessionId: string,
+  payload?: { continueInput?: string },
+): Promise<{ sessionId: string; Output?: string; IsSuccess: boolean; Error?: string }> {
+  const response = await fetch(`${API_BASE_URL}/api/sessions/${sessionId}/resume`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload ?? {}),
+  })
+
+  if (!response.ok) {
+    const errorPayload = (await response.json().catch(() => null)) as { error?: string } | null
+    throw new Error(errorPayload?.error ?? `Resume failed: ${response.status}`)
+  }
+
+  return (await response.json()) as {
+    sessionId: string
+    Output?: string
+    IsSuccess: boolean
+    Error?: string
+  }
+}

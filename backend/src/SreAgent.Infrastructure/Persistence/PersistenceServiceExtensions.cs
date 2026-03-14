@@ -39,6 +39,7 @@ public static class PersistenceServiceExtensions
         services.AddScoped<IAuditService, AuditService>();
         services.AddSingleton<ISessionStreamPublisher, SessionStreamPublisher>();
         services.AddSingleton<ISessionExecutionRegistry, SessionExecutionRegistry>();
+        services.AddSingleton<IBackgroundSessionExecutor, BackgroundSessionExecutor>();
         services.AddScoped<PersistenceExecutionTracker>();
         services.AddScoped<IExecutionTracker>(sp => new StreamingExecutionTracker(
             sp.GetRequiredService<PersistenceExecutionTracker>(),

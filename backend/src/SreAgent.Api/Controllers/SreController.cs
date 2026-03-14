@@ -1,9 +1,6 @@
-using System.Diagnostics;
-using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using SreAgent.Api.Models;
 using SreAgent.Application.Services;
-using SreAgent.Application.Tools.Todo.Services;
 using SreAgent.Framework.Abstractions;
 using SreAgent.Framework.Contexts;
 
@@ -16,37 +13,34 @@ namespace SreAgent.Api.Controllers;
 [Route("api/[controller]")]
 public class SreController : ControllerBase
 {
-    private readonly IAgent _agent;
     private readonly IContextStore _contextStore;
-    private readonly ITodoService _todoService;
     private readonly ITokenEstimator _tokenEstimator;
     private readonly ContextManagerOptions _contextOptions;
-    private readonly IExecutionTracker _executionTracker;
     private readonly IAuditService _auditService;
+    private readonly IBackgroundSessionExecutor _backgroundExecutor;
+    private readonly IAgent _agent;
     private readonly ILogger<SreController> _logger;
 
     public SreController(
         IAgent agent,
         IContextStore contextStore,
-        ITodoService todoService,
         ITokenEstimator tokenEstimator,
         ContextManagerOptions contextOptions,
-        IExecutionTracker executionTracker,
         IAuditService auditService,
+        IBackgroundSessionExecutor backgroundExecutor,
         ILogger<SreController> logger)
     {
         _agent = agent;
         _contextStore = contextStore;
-        _todoService = todoService;
         _tokenEstimator = tokenEstimator;
         _contextOptions = contextOptions;
-        _executionTracker = executionTracker;
         _auditService = auditService;
+        _backgroundExecutor = backgroundExecutor;
         _logger = logger;
     }
 
     /// <summary>
-    /// 聊天接口（支持新对话和追问）
+    /// 聊天接口（支持新对话和追问）。后台执行，立即返回 202 + sessionId。
     /// </summary>
     [HttpPost("chat")]
     public async Task<ActionResult<ChatResponse>> Chat(
@@ -57,32 +51,23 @@ public class SreController : ControllerBase
 
         var context = await PrepareContextAsync(request, ct);
 
-        var variables = new Dictionary<string, object>
-        {
-            [IExecutionTracker.VariableKey] = _executionTracker
-        };
+        // Save context with user message before starting background execution
+        await _contextStore.SaveAsync(context.ExportSnapshot(context.SessionId), ct);
 
-        var result = await _agent.ExecuteAsync(context, variables, ct);
+        _backgroundExecutor.StartExecution(context.SessionId, context);
 
-        await _contextStore.SaveAsync(result.Context.ExportSnapshot(context.SessionId), ct);
-
-        return Ok(new ChatResponse
+        return Accepted($"/api/sessions/{context.SessionId}", new ChatResponse
         {
             SessionId = context.SessionId,
-            Output = result.Output,
-            IsSuccess = result.IsSuccess,
-            Error = result.Error?.Message,
-            TokenUsage = new TokenUsageInfo
-            {
-                PromptTokens = result.TokenUsage.PromptTokens,
-                CompletionTokens = result.TokenUsage.CompletionTokens,
-                TotalTokens = result.TokenUsage.TotalTokens
-            }
+            Output = null,
+            IsSuccess = true,
+            Error = null,
+            TokenUsage = new TokenUsageInfo { PromptTokens = 0, CompletionTokens = 0, TotalTokens = 0 }
         });
     }
 
     /// <summary>
-    /// 分析故障告警（旧接口，保持兼容）
+    /// 分析故障告警。后台执行，立即返回 202 + sessionId。
     /// </summary>
     [HttpPost("analyze")]
     public async Task<ActionResult<AnalyzeResponse>> Analyze(
@@ -109,62 +94,30 @@ public class SreController : ControllerBase
             new { request.Title, request.Severity, request.AffectedService },
             "system", null, ct);
 
-        var variables = new Dictionary<string, object>
+        _backgroundExecutor.StartExecution(context.SessionId, context, result =>
         {
-            [IExecutionTracker.VariableKey] = _executionTracker
-        };
+            var sessionStatus = result.IsSuccess ? "Completed" : "Failed";
+            return new Dictionary<string, object>(alertMetadata)
+            {
+                ["status"] = sessionStatus,
+                ["completed_at"] = DateTime.UtcNow,
+                ["current_step"] = result.IterationCount,
+                ["diagnosis_summary"] = result.Output ?? string.Empty,
+                ["prompt_tokens"] = result.TokenUsage.PromptTokens,
+                ["completion_tokens"] = result.TokenUsage.CompletionTokens,
+                ["total_tokens"] = result.TokenUsage.TotalTokens
+            };
+        });
 
-        var stopwatch = Stopwatch.StartNew();
-        var result = await _agent.ExecuteAsync(context, variables, ct);
-        stopwatch.Stop();
-
-        var completedAt = DateTime.UtcNow;
-        var sessionStatus = result.IsSuccess ? "Completed" : "Failed";
-
-        var completionMetadata = new Dictionary<string, object>(alertMetadata)
-        {
-            ["status"] = sessionStatus,
-            ["completed_at"] = completedAt,
-            ["current_step"] = result.IterationCount,
-            ["diagnosis_summary"] = result.Output ?? string.Empty,
-            ["prompt_tokens"] = result.TokenUsage.PromptTokens,
-            ["completion_tokens"] = result.TokenUsage.CompletionTokens,
-            ["total_tokens"] = result.TokenUsage.TotalTokens
-        };
-
-        await _contextStore.SaveAsync(
-            result.Context.ExportSnapshot(context.SessionId, completionMetadata), ct);
-
-        await _auditService.LogAsync(context.SessionId,
-            result.IsSuccess ? "SessionCompleted" : "SessionFailed",
-            result.IsSuccess
-                ? $"Analysis completed in {stopwatch.ElapsedMilliseconds}ms"
-                : $"Analysis failed: {result.Error?.Message}",
-            new { durationMs = stopwatch.ElapsedMilliseconds, iterationCount = result.IterationCount },
-            "system", null, ct);
-
-        var todos = await _todoService.GetAsync(context.SessionId);
-
-        return Ok(new AnalyzeResponse
+        return Accepted($"/api/sessions/{context.SessionId}", new AnalyzeResponse
         {
             SessionId = context.SessionId,
-            Success = result.IsSuccess,
-            Analysis = result.Output,
-            Error = result.Error?.Message,
-            Tasks = todos.Select(t => new TaskItem
-            {
-                Id = t.Id,
-                Task = t.Content,
-                Priority = t.Priority.ToString(),
-                Status = t.Status.ToString()
-            }).ToList(),
-            TokenUsage = new TokenUsageInfo
-            {
-                PromptTokens = result.TokenUsage.PromptTokens,
-                CompletionTokens = result.TokenUsage.CompletionTokens,
-                TotalTokens = result.TokenUsage.TotalTokens
-            },
-            IterationCount = result.IterationCount
+            Success = true,
+            Analysis = null,
+            Error = null,
+            Tasks = [],
+            TokenUsage = new TokenUsageInfo { PromptTokens = 0, CompletionTokens = 0, TotalTokens = 0 },
+            IterationCount = 0
         });
     }
 
