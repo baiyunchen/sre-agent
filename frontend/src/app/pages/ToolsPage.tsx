@@ -1,18 +1,5 @@
-import { useState } from "react"
-import {
-  Database,
-  Activity,
-  Brain,
-  Stethoscope,
-  CloudCog,
-  Search,
-  ListChecks,
-  Shield,
-  XCircle,
-  TrendingUp,
-  Clock,
-  BarChart3,
-} from "lucide-react"
+import { useMemo, useState } from "react"
+import { Activity, Clock, Shield, TrendingUp } from "lucide-react"
 import {
   Card,
   CardContent,
@@ -25,21 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Switch } from "@/components/ui/switch"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-
-type ToolCategory = "Observability" | "Infrastructure" | "Knowledge" | "Diagnostic"
-
-interface Tool {
-  id: string
-  name: string
-  icon: typeof Activity
-  category: ToolCategory
-  description: string
-  invocations: number
-  successRate: number
-  avgDuration: string
-  requiresApproval: boolean
-  isActive: boolean
-}
+import { useToolRegistry, useUpdateToolApprovalMode } from "@/app/lib/hooks/useTools"
 
 interface Agent {
   id: string
@@ -53,105 +26,6 @@ interface Agent {
   avgDuration: string
   isActive: boolean
 }
-
-const staticTools: Tool[] = [
-  {
-    id: "tool-001",
-    name: "cloudwatch_query_logs",
-    icon: CloudCog,
-    category: "Observability",
-    description: "Query CloudWatch logs for error patterns and anomalies",
-    invocations: 342,
-    successRate: 98.5,
-    avgDuration: "2.3s",
-    requiresApproval: false,
-    isActive: true,
-  },
-  {
-    id: "tool-002",
-    name: "cloudwatch_get_metrics",
-    icon: BarChart3,
-    category: "Observability",
-    description: "Retrieve CloudWatch metrics for specified time range",
-    invocations: 287,
-    successRate: 99.2,
-    avgDuration: "1.8s",
-    requiresApproval: false,
-    isActive: true,
-  },
-  {
-    id: "tool-003",
-    name: "kubectl_get_logs",
-    icon: Database,
-    category: "Diagnostic",
-    description: "Fetch Kubernetes pod logs for analysis",
-    invocations: 156,
-    successRate: 97.1,
-    avgDuration: "3.1s",
-    requiresApproval: false,
-    isActive: true,
-  },
-  {
-    id: "tool-004",
-    name: "kubectl_delete_pod",
-    icon: XCircle,
-    category: "Infrastructure",
-    description: "Delete a Kubernetes pod (requires approval)",
-    invocations: 23,
-    successRate: 100,
-    avgDuration: "4.2s",
-    requiresApproval: true,
-    isActive: true,
-  },
-  {
-    id: "tool-005",
-    name: "query_knowledge_base",
-    icon: Brain,
-    category: "Knowledge",
-    description: "Search internal knowledge base for runbooks and solutions",
-    invocations: 412,
-    successRate: 94.3,
-    avgDuration: "1.2s",
-    requiresApproval: false,
-    isActive: true,
-  },
-  {
-    id: "tool-006",
-    name: "run_diagnostic_check",
-    icon: Stethoscope,
-    category: "Diagnostic",
-    description: "Execute automated diagnostic checks on services",
-    invocations: 198,
-    successRate: 96.8,
-    avgDuration: "5.7s",
-    requiresApproval: false,
-    isActive: true,
-  },
-  {
-    id: "tool-007",
-    name: "search_slack_history",
-    icon: Search,
-    category: "Knowledge",
-    description: "Search Slack channel history for related incidents",
-    invocations: 89,
-    successRate: 91.0,
-    avgDuration: "2.9s",
-    requiresApproval: false,
-    isActive: true,
-  },
-  {
-    id: "tool-008",
-    name: "create_todo_ticket",
-    icon: ListChecks,
-    category: "Infrastructure",
-    description: "Create follow-up ticket in task management system",
-    invocations: 67,
-    successRate: 100,
-    avgDuration: "1.5s",
-    requiresApproval: false,
-    isActive: true,
-  },
-]
 
 const staticAgents: Agent[] = [
   {
@@ -198,30 +72,32 @@ const staticAgents: Agent[] = [
   },
 ]
 
-const categoryColors: Record<ToolCategory, string> = {
-  Observability: "border-blue-500 text-blue-500",
-  Infrastructure: "border-red-500 text-red-500",
-  Knowledge: "border-purple-500 text-purple-500",
-  Diagnostic: "border-emerald-500 text-emerald-500",
+function formatDuration(durationMs: number): string {
+  if (durationMs <= 0) return "-"
+  if (durationMs < 1000) return `${durationMs}ms`
+  return `${(durationMs / 1000).toFixed(1)}s`
 }
 
 export function ToolsPage() {
-  const [tools, setTools] = useState<Tool[]>(staticTools)
   const [agents, setAgents] = useState<Agent[]>(staticAgents)
   const [searchQuery, setSearchQuery] = useState("")
-
-  const toggleToolStatus = (id: string) => {
-    setTools((prev) => prev.map((t) => (t.id === id ? { ...t, isActive: !t.isActive } : t)))
-  }
+  const [operatorId, setOperatorId] = useState("tools-admin")
+  const registryQuery = useToolRegistry()
+  const updateApprovalModeMutation = useUpdateToolApprovalMode()
 
   const toggleAgentStatus = (id: string) => {
     setAgents((prev) => prev.map((a) => (a.id === id ? { ...a, isActive: !a.isActive } : a)))
   }
 
-  const filteredTools = tools.filter(
-    (tool) =>
-      tool.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      tool.description.toLowerCase().includes(searchQuery.toLowerCase()),
+  const filteredTools = useMemo(
+    () =>
+      (registryQuery.data?.items ?? []).filter(
+        (tool) =>
+          tool.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          tool.summary.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          tool.category.toLowerCase().includes(searchQuery.toLowerCase()),
+      ),
+    [registryQuery.data?.items, searchQuery],
   )
 
   const filteredAgents = agents.filter(
@@ -235,52 +111,73 @@ export function ToolsPage() {
       <div className="flex flex-col gap-6">
         <div>
           <h1 className="text-3xl font-bold">Tools & Agents Registry</h1>
-          <p className="text-muted-foreground">Manage registered tools and AI agents</p>
+          <p className="text-muted-foreground">
+            Manage backend tool registry and per-tool auto approval
+          </p>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-4">
           <Input
             placeholder="Search tools and agents..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="max-w-sm"
           />
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="tools-operator" className="text-xs text-muted-foreground">
+              Operator ID (optional)
+            </Label>
+            <Input
+              id="tools-operator"
+              value={operatorId}
+              onChange={(e) => setOperatorId(e.target.value)}
+              placeholder="e.g., oncall-user"
+              className="w-52"
+            />
+          </div>
         </div>
 
         <Tabs defaultValue="tools" className="flex flex-col gap-4">
           <TabsList>
-            <TabsTrigger value="tools">Tools ({tools.length})</TabsTrigger>
+            <TabsTrigger value="tools">
+              Tools ({registryQuery.data?.total ?? 0})
+            </TabsTrigger>
             <TabsTrigger value="agents">Agents ({agents.length})</TabsTrigger>
           </TabsList>
 
           <TabsContent value="tools" className="flex flex-col gap-4">
+            {registryQuery.isLoading && (
+              <p className="text-sm text-muted-foreground">Loading tools from backend...</p>
+            )}
+            {registryQuery.error instanceof Error && (
+              <p className="text-sm text-destructive">{registryQuery.error.message}</p>
+            )}
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {filteredTools.map((tool) => {
-                const Icon = tool.icon
+                const isMutatingCurrentTool =
+                  updateApprovalModeMutation.isPending &&
+                  updateApprovalModeMutation.variables?.toolName === tool.name
                 return (
-                  <Card key={tool.id} className={!tool.isActive ? "opacity-60" : ""}>
+                  <Card key={tool.name}>
                     <CardHeader>
                       <div className="flex items-start justify-between">
                         <div className="flex items-start gap-3">
                           <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted">
-                            <Icon className="size-5" />
+                            <Activity className="size-5" />
                           </div>
                           <div className="min-w-0 flex-1">
-                            <CardTitle className="text-base">{tool.name}</CardTitle>
+                            <CardTitle className="font-mono text-base">{tool.name}</CardTitle>
                             <div className="mt-1 flex flex-wrap items-center gap-2">
-                              <Badge
-                                variant="outline"
-                                className={categoryColors[tool.category]}
-                              >
+                              <Badge variant="outline">
                                 {tool.category}
                               </Badge>
-                              {tool.requiresApproval && (
+                              {tool.approvalMode !== "auto-approve" && (
                                 <Badge
                                   variant="outline"
                                   className="border-amber-500 text-amber-500"
                                 >
                                   <Shield className="size-3" />
-                                  Requires Approval
+                                  {tool.approvalMode}
                                 </Badge>
                               )}
                             </div>
@@ -289,7 +186,7 @@ export function ToolsPage() {
                       </div>
                     </CardHeader>
                     <CardContent className="flex flex-col gap-4">
-                      <p className="text-sm text-muted-foreground">{tool.description}</p>
+                      <p className="text-sm text-muted-foreground">{tool.summary}</p>
 
                       <div className="grid grid-cols-3 gap-2 text-center">
                         <div>
@@ -303,23 +200,34 @@ export function ToolsPage() {
                           <div className="text-xs text-muted-foreground">Success</div>
                         </div>
                         <div>
-                          <div className="font-mono text-sm font-bold">{tool.avgDuration}</div>
+                          <div className="font-mono text-sm font-bold">
+                            {formatDuration(tool.avgDurationMs)}
+                          </div>
                           <div className="text-xs text-muted-foreground">Avg Time</div>
                         </div>
                       </div>
 
                       <div className="flex items-center justify-between border-t pt-4">
                         <div className="flex items-center gap-2">
-                          <div
-                            className={`size-2 rounded-full ${tool.isActive ? "bg-emerald-500" : "bg-gray-500"}`}
-                          />
                           <span className="text-sm">
-                            {tool.isActive ? "Active" : "Disabled"}
+                            {tool.approvalMode === "always-deny"
+                              ? "Always Deny"
+                              : tool.autoApprove
+                                ? "Auto Approve"
+                                : "Require Approval"}
                           </span>
                         </div>
                         <Switch
-                          checked={tool.isActive}
-                          onCheckedChange={() => toggleToolStatus(tool.id)}
+                          checked={tool.autoApprove}
+                          disabled={isMutatingCurrentTool}
+                          onCheckedChange={(checked) =>
+                            updateApprovalModeMutation.mutate({
+                              toolName: tool.name,
+                              autoApprove: checked,
+                              updatedBy:
+                                operatorId.trim() === "" ? undefined : operatorId.trim(),
+                            })
+                          }
                         />
                       </div>
                     </CardContent>
@@ -327,6 +235,13 @@ export function ToolsPage() {
                 )
               })}
             </div>
+            {!registryQuery.isLoading &&
+              !(registryQuery.error instanceof Error) &&
+              filteredTools.length === 0 && (
+                <p className="py-8 text-center text-sm text-muted-foreground">
+                  No tools found.
+                </p>
+              )}
           </TabsContent>
 
           <TabsContent value="agents" className="flex flex-col gap-4">

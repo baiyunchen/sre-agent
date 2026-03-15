@@ -177,3 +177,61 @@ Screenshots location: `frontend/e2e-screenshots/`
 ### Updated Recommendation
 
 **GO** — US-L06 回归通过，设置持久化能力与分层治理符合验收标准。
+
+---
+
+## Regression Addendum (US-L07)
+
+**Date:** 2026-03-14  
+**Scope:** Tools 页面后端集成 + Approval Rules 入口迁移
+
+### Additional Scenarios
+
+1. Tools 页面真实数据加载
+   - **Action:** 打开 `http://localhost:5174/tools`
+   - **Expected:** 能看到后端工具列表（非静态 mock），包含工具名、统计和审批状态
+   - **Actual:** PASS — 页面加载后显示后端返回工具（如 `cloudwatch_simple_query`、`todo_write`）
+2. Auto Approve 开关联动
+   - **Action:** 在 Tools 页面切换某工具 Auto Approve 开关
+   - **Expected:** 状态即时变化，且无前端错误
+   - **Actual:** PASS — 开关可切换，页面状态同步更新
+3. Approvals 页面入口收敛
+   - **Action:** 打开 `http://localhost:5174/approvals`
+   - **Expected:** 仅有 `Pending`、`History` 两个 tab，不再展示 `Rules`
+   - **Actual:** PASS — 仅保留 `Pending` 与 `History`
+
+### Notes
+
+- 首轮 E2E 失败原因为后端旧进程仍在运行（`/api/tools` 返回 404）；重启后端加载新代码后复测通过。
+
+### Updated Recommendation
+
+**GO** — US-L07 回归通过，Tools 与 Approvals 的规则管理入口已按预期收敛。
+
+---
+
+## Regression Addendum (US-L08)
+
+**Date:** 2026-03-14  
+**Scope:** Tools 审批能力用户旅程 E2E 用例补强
+
+### Test Design Upgrades
+
+- 将原“页面可见性”验证升级为“用户旅程级”回归：
+  1. Tools 真实工具数据 + 指标展示
+  2. Auto Approve 开关切换、刷新持久化与回滚恢复
+  3. `always-deny` 规则识别与覆盖行为验证
+  4. Approvals 页面 Rules 入口移除验证
+  5. `/api/tools` 异常时可读错误反馈
+
+### Execution Result
+
+- Command:
+  - `npx playwright test e2e-tools-approvals-migration.spec.ts --project=chromium`
+- Result:
+  - **PASS (5/5)**
+  - 用时约 12.5s
+
+### Updated Recommendation
+
+**GO** — 审批相关关键路径具备稳定 E2E 回归保障，可用于后续迭代防回归。

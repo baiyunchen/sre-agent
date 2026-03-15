@@ -62,3 +62,19 @@
 - 移除单一 Model Name 下拉（改为 Capability → Model 映射展示）
 - Provider 选项对齐后端 `WellKnownModelProviders`
 - API Key 仅在 PUT 时传入，GET 返回遮盖后的值
+
+## 回归补充（US-L07：Tools 与 Approvals 入口收敛）
+
+### Tools 页面
+
+- Tools 列表由后端 `GET /api/tools` 驱动，不再使用前端静态 mock
+- 每个工具卡片展示：`name`、`category`、`summary`、`invocations`、`successRate`、`avgDurationMs`
+- 规则操作改为每个工具一处 `Auto Approve` 开关：
+  - 开启：`auto-approve`（写入 `always-allow`）
+  - 关闭：`require-approval`
+- 若后端返回 `always-deny`，UI 显示 `Always Deny` 状态文案
+
+### Approvals 页面
+
+- 保留 `Pending` 和 `History` 两个 tab
+- 移除 `Rules` tab，避免与 Tools 页形成双入口

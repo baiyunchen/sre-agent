@@ -73,3 +73,13 @@ SRE Agent 系统使用 LLM 进行告警分析与诊断。当前 LLM Provider 在
 - Given 管理员已保存 LLM 配置 When 服务重启 Then 读取到重启前配置
 - Given 代码评审 When 检查 Settings 模块 Then 核心业务逻辑位于 Service/Repository，不堆积在 Controller
 - Given 数据库迁移执行完成 When 检查 schema Then 存在 `llm_settings` 表
+
+### US-L07: Tools 页面统一管理 Auto Approve
+
+作为系统管理员，我希望在 Tools 页面直接管理每个工具是否自动审批，以便将审批规则入口从 Approvals 收敛到 Tools，减少配置路径分散。
+
+**验收标准：**
+- Given 管理员进入 `/tools` When 页面加载完成 Then 工具列表来自后端真实数据（名称、分类、调用统计、审批模式）
+- Given 某工具当前为 require-approval When 管理员开启 Auto Approve Then 后端规则更新为 always-allow 且页面即时反映
+- Given 某工具当前为 auto-approve When 管理员关闭 Auto Approve Then 后端规则更新为 require-approval 且页面即时反映
+- Given 管理员进入 `/approvals` When 查看标签页 Then 仅展示 Pending 与 History，不再展示 Rules

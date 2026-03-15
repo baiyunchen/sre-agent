@@ -565,6 +565,48 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /api/tools:
+    get:
+      tags: [settings]
+      summary: Get tool registry with approval modes and usage stats
+      responses:
+        '200':
+          description: Tool registry returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToolRegistryResponse'
+  /api/tools/{toolName}/approval-mode:
+    put:
+      tags: [settings]
+      summary: Update tool auto-approval mode
+      parameters:
+        - in: path
+          name: toolName
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateToolApprovalModeRequest'
+      responses:
+        '200':
+          description: Tool approval mode updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToolRegistryItem'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Tool not found
   /api/settings/llm:
     get:
       tags: [settings]
@@ -1143,6 +1185,49 @@ components:
           type: string
           enum: [Approved, Rejected]
         message:
+          type: string
+          nullable: true
+    ToolRegistryItem:
+      type: object
+      required: [name, summary, category, approvalMode, autoApprove, invocations, successRate, avgDurationMs]
+      properties:
+        name:
+          type: string
+        summary:
+          type: string
+        category:
+          type: string
+        approvalMode:
+          type: string
+          enum: [auto-approve, require-approval, always-deny]
+        autoApprove:
+          type: boolean
+        invocations:
+          type: integer
+        successRate:
+          type: number
+          format: double
+          description: Percent value in range [0,100]
+        avgDurationMs:
+          type: integer
+          format: int64
+    ToolRegistryResponse:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ToolRegistryItem'
+        total:
+          type: integer
+    UpdateToolApprovalModeRequest:
+      type: object
+      required: [autoApprove]
+      properties:
+        autoApprove:
+          type: boolean
+        updatedBy:
           type: string
           nullable: true
     LlmConfigResponse:

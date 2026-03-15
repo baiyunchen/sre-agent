@@ -9,6 +9,9 @@ public interface IToolInvocationRepository
     Task UpdateAsync(ToolInvocationEntity invocation, CancellationToken ct = default);
     Task<ToolInvocationEntity?> GetByIdAsync(Guid id, CancellationToken ct = default);
     Task<IReadOnlyList<ToolInvocationEntity>> GetByAgentRunAsync(Guid agentRunId, CancellationToken ct = default);
+    Task<IReadOnlyList<ToolInvocationStats>> GetStatsByToolNamesAsync(
+        IReadOnlyCollection<string> toolNames,
+        CancellationToken ct = default);
 }
 
 public class ToolInvocationRepository : IToolInvocationRepository
@@ -47,4 +50,42 @@ public class ToolInvocationRepository : IToolInvocationRepository
             .OrderBy(i => i.RequestedAt)
             .ToListAsync(ct);
     }
+
+    public async Task<IReadOnlyList<ToolInvocationStats>> GetStatsByToolNamesAsync(
+        IReadOnlyCollection<string> toolNames,
+        CancellationToken ct = default)
+    {
+        if (toolNames.Count == 0)
+            return [];
+
+        var normalizedToolNames = toolNames
+            .Where(t => !string.IsNullOrWhiteSpace(t))
+            .Select(t => t.Trim())
+            .Distinct()
+            .ToArray();
+
+        if (normalizedToolNames.Length == 0)
+            return [];
+
+        return await _context.ToolInvocations
+            .AsNoTracking()
+            .Where(i => normalizedToolNames.Contains(i.ToolName))
+            .GroupBy(i => i.ToolName)
+            .Select(group => new ToolInvocationStats
+            {
+                ToolName = group.Key,
+                Invocations = group.Count(),
+                SuccessCount = group.Count(i => i.Status == "Completed"),
+                AvgDurationMs = (long?)group.Average(i => (double?)i.DurationMs) ?? 0
+            })
+            .ToListAsync(ct);
+    }
+}
+
+public class ToolInvocationStats
+{
+    public string ToolName { get; init; } = string.Empty;
+    public int Invocations { get; init; }
+    public int SuccessCount { get; init; }
+    public long AvgDurationMs { get; init; }
 }

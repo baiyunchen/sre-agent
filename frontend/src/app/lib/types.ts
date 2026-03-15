@@ -267,6 +267,27 @@ export interface CreateApprovalRuleRequest {
   createdBy?: string
 }
 
+export interface ToolRegistryItem {
+  name: string
+  summary: string
+  category: string
+  approvalMode: "auto-approve" | "require-approval" | "always-deny"
+  autoApprove: boolean
+  invocations: number
+  successRate: number
+  avgDurationMs: number
+}
+
+export interface ToolRegistryResponse {
+  items: ToolRegistryItem[]
+  total: number
+}
+
+export interface UpdateToolApprovalModeRequest {
+  autoApprove: boolean
+  updatedBy?: string
+}
+
 export interface LlmConfigResponse {
   provider: string
   baseUrl: string

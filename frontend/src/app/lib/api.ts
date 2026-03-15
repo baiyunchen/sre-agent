@@ -22,6 +22,9 @@ import type {
   SessionTodosResponse,
   SessionToolInvocationsResponse,
   SessionsQuery,
+  ToolRegistryItem,
+  ToolRegistryResponse,
+  UpdateToolApprovalModeRequest,
 } from "@/app/lib/types"
 
 export interface ToolApprovalDecisionResponse {
@@ -327,6 +330,43 @@ export async function deleteApprovalRule(id: string): Promise<void> {
       | null
     throw new Error(errorPayload?.error ?? fallbackMessage)
   }
+}
+
+export async function fetchToolRegistry(): Promise<ToolRegistryResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/tools`)
+  if (!response.ok) {
+    const fallbackMessage = `获取工具注册表失败: ${response.status}`
+    const errorPayload = (await response.json().catch(() => null)) as
+      | { error?: string }
+      | null
+    throw new Error(errorPayload?.error ?? fallbackMessage)
+  }
+
+  return (await response.json()) as ToolRegistryResponse
+}
+
+export async function updateToolApprovalMode(
+  toolName: string,
+  payload: UpdateToolApprovalModeRequest,
+): Promise<ToolRegistryItem> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/tools/${encodeURIComponent(toolName)}/approval-mode`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+  )
+
+  if (!response.ok) {
+    const fallbackMessage = `更新工具审批模式失败: ${response.status}`
+    const errorPayload = (await response.json().catch(() => null)) as
+      | { error?: string }
+      | null
+    throw new Error(errorPayload?.error ?? fallbackMessage)
+  }
+
+  return (await response.json()) as ToolRegistryItem
 }
 
 export async function interruptSession(

@@ -11,6 +11,7 @@ public interface IApprovalService
     Task<(IReadOnlyList<InterventionEntity> Items, int Total)> GetHistoryAsync(int limit, CancellationToken ct = default);
     Task<IReadOnlyList<ApprovalRuleEntity>> GetRulesAsync(CancellationToken ct = default);
     Task<ApprovalRuleEntity> CreateRuleAsync(string toolName, string ruleType, string? createdBy, CancellationToken ct = default);
+    Task<ApprovalRuleEntity> UpsertRuleAsync(string toolName, string ruleType, string? createdBy, CancellationToken ct = default);
     Task<bool> DeleteRuleAsync(Guid id, CancellationToken ct = default);
 }
 
@@ -156,6 +157,21 @@ public class ApprovalService : IApprovalService
         };
 
         return await _approvalRuleRepository.CreateAsync(rule, ct);
+    }
+
+    public async Task<ApprovalRuleEntity> UpsertRuleAsync(string toolName, string ruleType, string? createdBy, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(toolName))
+            throw new ArgumentException("toolName cannot be empty");
+
+        if (!ValidRuleTypes.Contains(ruleType))
+            throw new ArgumentException($"ruleType must be one of: {string.Join(", ", ValidRuleTypes)}");
+
+        return await _approvalRuleRepository.UpsertByToolNameAsync(
+            toolName.Trim(),
+            ruleType,
+            createdBy?.Trim(),
+            ct);
     }
 
     public Task<bool> DeleteRuleAsync(Guid id, CancellationToken ct = default)

@@ -212,6 +212,38 @@ public class ApprovalServiceTests
         result.Should().BeTrue();
     }
 
+    [Fact]
+    public async Task UpsertRuleAsync_ShouldDelegateToRepository()
+    {
+        var updatedAt = DateTime.UtcNow;
+        var ruleRepository = new Mock<IApprovalRuleRepository>();
+        ruleRepository
+            .Setup(r => r.UpsertByToolNameAsync("todo_write", "require-approval", "oncall", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ApprovalRuleEntity
+            {
+                Id = Guid.NewGuid(),
+                ToolName = "todo_write",
+                RuleType = "require-approval",
+                CreatedBy = "oncall",
+                CreatedAt = updatedAt
+            });
+
+        var service = CreateService(approvalRuleRepository: ruleRepository.Object);
+        var result = await service.UpsertRuleAsync("todo_write", "require-approval", "oncall", CancellationToken.None);
+
+        result.ToolName.Should().Be("todo_write");
+        result.RuleType.Should().Be("require-approval");
+    }
+
+    [Fact]
+    public async Task UpsertRuleAsync_ShouldThrow_WhenRuleTypeInvalid()
+    {
+        var service = CreateService();
+        var act = async () => await service.UpsertRuleAsync("tool", "auto-approve", null, CancellationToken.None);
+
+        await act.Should().ThrowAsync<ArgumentException>();
+    }
+
     private static ApprovalService CreateService(
         ISessionRepository? sessionRepository = null,
         IInterventionRepository? interventionRepository = null,
