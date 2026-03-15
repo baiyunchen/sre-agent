@@ -398,3 +398,7 @@ $RECYCLE.BIN/
 
 # Windows shortcuts
 *.lnk
+
+/frontend/e2e-screenshots/
+/frontend/e2e-results/
+/frontend/playwright-report/

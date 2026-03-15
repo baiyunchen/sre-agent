@@ -235,3 +235,26 @@ Screenshots location: `frontend/e2e-screenshots/`
 ### Updated Recommendation
 
 **GO** — 审批相关关键路径具备稳定 E2E 回归保障，可用于后续迭代防回归。
+
+---
+
+## Regression Addendum (US-L09)
+
+**Date:** 2026-03-14  
+**Scope:** 前端 E2E 文件归类与临时脚本清理
+
+### Changes
+
+- 用例目录统一为：`frontend/e2e/specs/`
+- 临时脚本删除：`e2e-apikey-display-verify.spec.ts`、`e2e-llm-full-flow.spec.ts`、`e2e-provider-switch-verify.spec.ts`、`e2e-save-logic-verify.spec.ts`、`e2e-ux-fixes-verify.spec.ts`
+- 新增高质量回归用例：`llm-settings-regression.spec.ts`
+- 保留并迁移审批回归用例：`tools-approvals-migration.spec.ts`
+
+### Validation
+
+- `npx playwright test --project=chromium` → **PASS (8/8)**
+- `npx tsc --noEmit` → **PASS**
+
+### Updated Recommendation
+
+**GO** — E2E 测试资产已完成归类，临时脚本已清理，保留用例质量和可维护性满足持续回归要求。

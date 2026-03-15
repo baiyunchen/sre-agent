@@ -20,3 +20,5 @@
 | QA (US-L07) | GO | 2026-03-14 | 浏览器 E2E 复测通过（Tools 数据加载、开关联动、Approvals tab 收敛） |
 | Developer (US-L08) | GO | 2026-03-14 | 完成审批用户旅程 E2E 用例补强（5 场景），测试代码可维护性提升 |
 | QA (US-L08) | GO | 2026-03-14 | `e2e-tools-approvals-migration.spec.ts` 执行通过（5/5） |
+| Developer (US-L09) | GO | 2026-03-14 | 完成 E2E 目录重组与临时脚本清理，Playwright 配置已对齐新结构 |
+| QA (US-L09) | GO | 2026-03-14 | 迁移后执行 `npx playwright test --project=chromium` 通过（8/8） |

@@ -1,6 +1,6 @@
 /**
  * User-centric E2E: Tools approval management should be reliable and actionable.
- * Run: npx playwright test e2e-tools-approvals-migration.spec.ts --project=chromium
+ * Run: npx playwright test e2e/specs/tools-approvals-migration.spec.ts --project=chromium
  */
 import { expect, test, type APIRequestContext, type Locator, type Page } from "@playwright/test"
 
@@ -29,23 +29,6 @@ async function fetchToolRegistry(request: APIRequestContext): Promise<ToolRegist
   const response = await request.get(`${API_BASE_URL}/api/tools`)
   expect(response.ok(), `GET /api/tools failed with ${response.status()}`).toBeTruthy()
   return (await response.json()) as ToolRegistryResponse
-}
-
-async function updateToolAutoApprove(
-  request: APIRequestContext,
-  toolName: string,
-  autoApprove: boolean,
-): Promise<void> {
-  const response = await request.put(
-    `${API_BASE_URL}/api/tools/${encodeURIComponent(toolName)}/approval-mode`,
-    {
-      data: {
-        autoApprove,
-        updatedBy: TEST_OPERATOR,
-      },
-    },
-  )
-  expect(response.ok(), `PUT /api/tools/${toolName}/approval-mode failed with ${response.status()}`).toBeTruthy()
 }
 
 async function createRule(
